@@ -91,6 +91,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Learning rate decay between stages for self training stage")
     parser.add_argument('--correct_frequency', action='store_true',
                         help='Do soft label frequency correction before choosing labels with threshold')
+    parser.add_argument('--use_kldiv_loss', action='store_true')
 
     return parser
 
@@ -127,7 +128,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     # Load pretrained model and tokenizer
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    config = config_class.from_pretrained(args.model_name, num_labels=num_labels)  # TODO: do caching
+    config = config_class.from_pretrained(args.model_name, num_labels=num_labels, use_kldiv_loss=args.use_kldiv_loss)  # TODO: do caching
     tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
 
     # Training

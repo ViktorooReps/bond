@@ -160,6 +160,8 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         self.hidden2label = nn.Linear(config.hidden_size, self.num_labels)
         self.crf = MarginalCRF(self.num_labels)
 
+        self.use_kldiv = config.use_kldiv_loss
+
         self.init_weights()
 
     @property
@@ -176,6 +178,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         inputs_embeds=None,
         labels=None,
         label_mask=None,
+        self_training: bool = False
     ):
         outputs = self.roberta(
             input_ids,
@@ -199,12 +202,13 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
             if labels.shape != marginal_labels.shape:
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
-            batch_size, seq_len, _ = labels.shape
-            loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
-            outputs = (loss,) + outputs
+            if self_training and self.use_kldiv:
+                kld_loss = KLDivLoss()
+                loss = kld_loss(marginal_labels.view(-1, self.num_labels)[label_mask == 1],
+                                labels.view(-1, self.num_labels)[label_mask == 1])
+            else:
+                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
 
-            # kld_loss = KLDivLoss()
-            # loss_kld = kld_loss(marginal_labels.view(-1, self.num_labels)[mask], labels.view(-1, self.num_labels)[mask])
-            # outputs = (loss_kld,) + outputs
+            outputs = (loss,) + outputs
 
         return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
