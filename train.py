@@ -1,0 +1,132 @@
+import argparse
+import os
+import warnings
+from pathlib import Path
+
+import torch
+from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
+
+from bond.data import DatasetName, DatasetType, load_tags_dict
+from bond.model import RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
+from bond.trainer import evaluate, train
+from bond.utils import Scores, set_seed
+
+ALL_MODELS = sum(
+    (
+        tuple(conf_map.keys())
+        for conf_map in (ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP,)
+    ),
+    (),
+)
+
+MODEL_CLASSES = {
+    "roberta": (RobertaConfig, RobertaForTokenClassificationOriginal, RobertaTokenizer),
+    "roberta-crf": (RobertaConfig, RobertaCRFForTokenClassification, RobertaTokenizer)
+}
+
+
+def create_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+
+    # Required parameters
+    parser.add_argument("--dataset", default=None, type=str, required=True,
+                        help="One of " + ', '.join(dataset_name.value for dataset_name in DatasetName))
+    parser.add_argument("--model_type", default=None, type=str, required=True,
+                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+    parser.add_argument("--model_name", default=None, type=str, required=True,
+                        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
+    parser.add_argument('--experiment_name', default=None, type=str, required=True,
+                        help='Name of the experiment')
+
+    # Other parameters
+    parser.add_argument("--max_seq_length", default=128, type=int,
+                        help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, "
+                             "sequences shorter will be padded.")
+    parser.add_argument("--no_cuda", action="store_true",
+                        help="Avoid using CUDA when available")
+
+    parser.add_argument("--batch_size", default=8, type=int,
+                        help="Batch size per GPU/CPU for training.")
+    parser.add_argument("--steps_per_epoch", type=int, default=850,
+                        help="Number of optimization steps per epoch.")
+    parser.add_argument("--learning_rate", default=1e-5, type=float,
+                        help="The initial learning rate for Adam.")
+    parser.add_argument("--lr_decrease", default=0.9, type=float,
+                        help="LR decrease with layer depth")
+    parser.add_argument("--lr_st_decay", default=0.5, type=float,
+                        help="Learning rate decay between stages for self training stage")
+    parser.add_argument("--decay_decrease", default=0.9, type=float,
+                        help="Weight decay decrease with layer depth")
+    parser.add_argument("--weight_decay", default=1e-4, type=float,
+                        help="Weight decay if we apply some.")
+    parser.add_argument("--adam_epsilon", default=1e-8, type=float,
+                        help="Epsilon for Adam optimizer.")
+    parser.add_argument("--adam_beta1", default=0.9, type=float,
+                        help="BETA1 for Adam optimizer.")
+    parser.add_argument("--adam_beta2", default=0.98, type=float,
+                        help="BETA2 for Adam optimizer.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+                        help="Max gradient norm for gradient clipping.")
+    parser.add_argument("--ner_fit_epochs", default=1, type=int,
+                        help="number of epochs for NER fitting stage")
+    parser.add_argument("--warmup_steps", default=200, type=int,
+                        help="Linear warmup over warmup_steps.")
+
+    parser.add_argument("--logging_steps", type=int, default=50,
+                        help="Log every X updates steps.")
+    parser.add_argument("--overwrite_output_dir", action="store_true",
+                        help="Overwrite the content of the output directory")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="random seed for initialization")
+
+    # self-training
+    parser.add_argument('--self_training_epochs', type=int, default=50,
+                        help='number of epochs for self training stage')
+    parser.add_argument('--label_keep_threshold', type=float, default=0.9,
+                        help='Label keeping threshold for self training stage')
+
+    return parser
+
+
+def main(parser: argparse.ArgumentParser) -> Scores:
+    args = parser.parse_args()
+
+    warnings.simplefilter("ignore", UserWarning)
+
+    tb_dir = Path(os.path.join('tfboard', args.experiment_name))
+
+    # Create output directory if needed
+    if not tb_dir.exists():
+        os.makedirs(tb_dir)
+
+    dataset = DatasetName(args.dataset)
+
+    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
+    args.device = device
+    args.n_gpu = 1
+
+    set_seed(args.seed)
+    num_labels = len(load_tags_dict(dataset).keys())
+
+    # Load pretrained model and tokenizer
+    args.model_type = args.model_type.lower()
+    config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    config = config_class.from_pretrained(args.model_name, num_labels=num_labels)  # TODO: do caching
+    tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
+
+    # Training
+    model = model_class.from_pretrained(args.model_name, config=config)  # TODO: do caching
+    model, global_step, tr_loss = train(args, model, dataset, tokenizer)
+
+    # TODO: save model
+
+    # Evaluation
+    results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
+
+    print(results)
+
+    return results
+
+
+if __name__ == '__main__':
+    main(create_parser())

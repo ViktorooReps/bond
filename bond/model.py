@@ -137,7 +137,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
     Examples::
         tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
-        model = RobertaForTokenClassification.from_pretrained('roberta-base')
+        model = RobertaCRFForTokenClassification.from_pretrained('roberta-base')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
         labels = torch.tensor([1] * input_ids.size(1)).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids, labels=labels)
@@ -169,7 +169,6 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         labels=None,
         label_mask=None,
     ):
-
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
@@ -188,18 +187,12 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         outputs = (marginal_labels, final_embedding,) + outputs[2:]  # add hidden states and attention if they are here
 
         if labels is not None:
-            mask = True
-            if attention_mask is not None:
-                mask = mask & (attention_mask.view(-1) == 1)
-            if label_mask is not None:
-                mask = mask & label_mask.view(-1)
-
             # might be a problem when labels are not soft
             if labels.shape != marginal_labels.shape:
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
             batch_size, seq_len, _ = labels.shape
-            loss = self.crf.forward(label_scores, marginal_tags=labels, mask=mask.view(batch_size, seq_len))
+            loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
             outputs = (loss,) + outputs
 
             # kld_loss = KLDivLoss()
