@@ -55,6 +55,10 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
 
         self.init_weights()
 
+    @property
+    def returns_probs(self) -> bool:
+        return False
+
     def forward(
         self,
         input_ids=None,
@@ -89,7 +93,7 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
                 if attention_mask is not None:
                     active_loss = attention_mask.view(-1) == 1
                 if label_mask is not None:
-                    active_loss = active_loss & label_mask.view(-1)
+                    active_loss = active_loss & (label_mask.view(-1) == 1)
                 active_logits = logits.view(-1, self.num_labels)[active_loss]
 
             if labels.shape == logits.shape:
@@ -157,6 +161,10 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         self.crf = MarginalCRF(self.num_labels)
 
         self.init_weights()
+
+    @property
+    def returns_probs(self) -> bool:
+        return True
 
     def forward(
         self,

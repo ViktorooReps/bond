@@ -1,6 +1,4 @@
-import os
 from copy import deepcopy
-from time import localtime, strftime
 from typing import List
 
 import torch
@@ -54,12 +52,10 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
     return results
 
 
-def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrainedTokenizer):
+def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
     st_epochs = args.self_training_epochs
     ner_epochs = args.ner_fit_epochs
-
-    tb_writer = SummaryWriter(os.path.join('tfboard', args.experiment_name, strftime("%Y-%m-%d_%H:%M:%S", localtime())))
 
     train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length)
 
@@ -141,7 +137,9 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 outputs = self_training_teacher_model(**inputs)
 
             # TODO: experiment with no frequency correction
-            pred_labels = soft_frequency(logits=outputs[0], power=2, probs=True)
+            pred_labels = outputs[1]
+            if args.correct_frequency:
+                pred_labels = soft_frequency(logits=pred_labels, power=2, probs=self_training_teacher_model.returns_probs)
             _threshold = args.label_keep_threshold % 1
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
 

@@ -1,7 +1,9 @@
 import argparse
+import logging
 import os
 import warnings
 from pathlib import Path
+from time import localtime, strftime
 
 import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
@@ -10,6 +12,11 @@ from bond.data import DatasetName, DatasetType, load_tags_dict
 from bond.model import RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
 from bond.trainer import evaluate, train
 from bond.utils import Scores, set_seed
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    from tensorboardX import SummaryWriter
 
 ALL_MODELS = sum(
     (
@@ -20,13 +27,13 @@ ALL_MODELS = sum(
 )
 
 MODEL_CLASSES = {
-    "roberta": (RobertaConfig, RobertaForTokenClassificationOriginal, RobertaTokenizer),
+    "roberta-original": (RobertaConfig, RobertaForTokenClassificationOriginal, RobertaTokenizer),
     "roberta-crf": (RobertaConfig, RobertaCRFForTokenClassification, RobertaTokenizer)
 }
 
 
 def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Required parameters
     parser.add_argument("--dataset", default=None, type=str, required=True,
@@ -53,8 +60,6 @@ def create_parser() -> argparse.ArgumentParser:
                         help="The initial learning rate for Adam.")
     parser.add_argument("--lr_decrease", default=0.9, type=float,
                         help="LR decrease with layer depth")
-    parser.add_argument("--lr_st_decay", default=0.5, type=float,
-                        help="Learning rate decay between stages for self training stage")
     parser.add_argument("--decay_decrease", default=0.9, type=float,
                         help="Weight decay decrease with layer depth")
     parser.add_argument("--weight_decay", default=1e-4, type=float,
@@ -74,8 +79,6 @@ def create_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--logging_steps", type=int, default=50,
                         help="Log every X updates steps.")
-    parser.add_argument("--overwrite_output_dir", action="store_true",
-                        help="Overwrite the content of the output directory")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed for initialization")
 
@@ -84,20 +87,33 @@ def create_parser() -> argparse.ArgumentParser:
                         help='number of epochs for self training stage')
     parser.add_argument('--label_keep_threshold', type=float, default=0.9,
                         help='Label keeping threshold for self training stage')
+    parser.add_argument("--lr_st_decay", default=0.5, type=float,
+                        help="Learning rate decay between stages for self training stage")
+    parser.add_argument('--correct_frequency', action='store_true',
+                        help='Do soft label frequency correction before choosing labels with threshold')
 
     return parser
 
 
 def main(parser: argparse.ArgumentParser) -> Scores:
     args = parser.parse_args()
+    run_name = strftime("%Y-%m-%d_%H:%M:%S", localtime())
 
     warnings.simplefilter("ignore", UserWarning)
 
     tb_dir = Path(os.path.join('tfboard', args.experiment_name))
+    log_dir = Path(os.path.join('logs', args.experiment_name))
 
     # Create output directory if needed
     if not tb_dir.exists():
         os.makedirs(tb_dir)
+    if not log_dir.exists():
+        os.makedirs(log_dir)
+
+    logging.basicConfig(format='[%(asctime)s] %(message)s', filename=os.path.join(log_dir, run_name), level=logging.INFO)
+    tb_writer = SummaryWriter(os.path.join(tb_dir, run_name))
+
+    logging.info('Arguments: ' + str(args))
 
     dataset = DatasetName(args.dataset)
 
@@ -116,14 +132,14 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     # Training
     model = model_class.from_pretrained(args.model_name, config=config)  # TODO: do caching
-    model, global_step, tr_loss = train(args, model, dataset, tokenizer)
+    model, global_step, tr_loss = train(args, model, dataset, tokenizer, tb_writer)
 
     # TODO: save model
 
     # Evaluation
     results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
 
-    print(results)
+    logging.info('Results: ' + str(results))
 
     return results
 

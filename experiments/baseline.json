@@ -1,0 +1,71 @@
+[
+  {
+    "script": "train.py",
+    "args": [
+      "--experiment_name=baseline",
+      "--dataset=conll03",
+      "--model_type=roberta-original",
+      "--model_name=roberta-base",
+      "--steps_per_epoch=850",
+      "--learning_rate=1e-05",
+      "--lr_decrease=1.0",
+      "--decay_decrease=1.0",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--ner_fit_epochs=1",
+      "--self_training_epochs=2",
+      "--label_keep_threshold=0.9",
+      "--lr_st_decay=1.0",
+      "--correct_frequency",
+      "--seed=1"
+    ]
+  },
+  {
+    "script": "train.py",
+    "args": [
+      "--experiment_name=baseline",
+      "--dataset=conll03",
+      "--model_type=roberta-original",
+      "--model_name=roberta-base",
+      "--steps_per_epoch=850",
+      "--learning_rate=1e-05",
+      "--lr_decrease=1.0",
+      "--decay_decrease=1.0",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--ner_fit_epochs=1",
+      "--self_training_epochs=2",
+      "--label_keep_threshold=0.9",
+      "--lr_st_decay=1.0",
+      "--correct_frequency",
+      "--seed=10"
+    ]
+  },
+  {
+    "script": "train.py",
+    "args": [
+      "--experiment_name=baseline",
+      "--dataset=conll03",
+      "--model_type=roberta-original",
+      "--model_name=roberta-base",
+      "--steps_per_epoch=850",
+      "--learning_rate=1e-05",
+      "--lr_decrease=1.0",
+      "--decay_decrease=1.0",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--ner_fit_epochs=1",
+      "--self_training_epochs=2",
+      "--label_keep_threshold=0.9",
+      "--lr_st_decay=1.0",
+      "--correct_frequency",
+      "--seed=100"
+    ]
+  }
+]
