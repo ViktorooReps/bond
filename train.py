@@ -77,7 +77,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup_steps", default=200, type=int,
                         help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=50,
+    parser.add_argument("--logging_steps", type=int, default=100,
                         help="Log every X updates steps.")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed for initialization")
