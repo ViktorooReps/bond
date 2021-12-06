@@ -132,12 +132,11 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             batch = tuple(t.to(args.device) for t in batch)
 
             # Using current teacher to update the label
-            inputs = {"input_ids": batch[0], "attention_mask": batch[3]}
+            inputs = {"input_ids": batch[0], "label_mask": batch[2], "attention_mask": batch[3]}
             with torch.no_grad():
                 outputs = self_training_teacher_model(**inputs)
 
-            # TODO: experiment with no frequency correction
-            pred_labels = outputs[1]
+            pred_labels = outputs[0]
             if args.correct_frequency:
                 pred_labels = soft_frequency(logits=pred_labels, power=2, probs=self_training_teacher_model.returns_probs)
             _threshold = args.label_keep_threshold % 1
