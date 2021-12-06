@@ -98,7 +98,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 optimizer.step()
-                # scheduler.step()  # Update learning rate schedule # TODO: do normal scheduling
+                scheduler.step()  # Update learning rate schedule # TODO: do normal scheduling
                 model.zero_grad()
                 global_step += 1
 
