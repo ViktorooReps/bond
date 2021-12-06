@@ -32,7 +32,7 @@ def create_parser() -> ArgumentParser:
                                         'args: (optional) arguments for python script\n', formatter_class=DefaultHelpRawFormatter)
 
     # positional
-    parser.add_argument('config', metavar='JSON RUN CONFIGURATION', type=str,
+    parser.add_argument('config', metavar='JSON RUN CONFIGURATION', type=str, nargs='+',
                         help='Path to file with run configuration.')
 
     # optional
@@ -47,21 +47,25 @@ if __name__ == '__main__':
 
     args = arg_parser.parse_args()
 
-    with open(args.config) as config_file:
-        config: List[dict] = json.load(config_file)
+    for config_file_name in args.config:
 
-    print(f'Running {len(config)} scripts...')
+        with open(config_file_name) as config_file:
+            config: List[dict] = json.load(config_file)
 
-    for config_idx, run_config in enumerate(config):
-        script_path = run_config['script']
-        script_args: List[str] = ['python', script_path] + list(map(str, run_config.get('args', [])))
+        print(f'Running {len(config)} scripts from {config_file_name}...')
 
-        print(f'\nRunning config №{config_idx + 1}...')
-        print(f'\tscript name: {script_path}')
-        if 'args' in run_config:
-            print(f'\tscript arguments: {run_config["args"]}')
+        for config_idx, run_config in enumerate(config):
+            script_path = run_config['script']
+            script_args: List[str] = ['python', script_path] + list(map(str, run_config.get('args', [])))
 
-        print('-' * 40 + f'START\t{datetime.now()}')
-        subprocess.run(script_args)
-        sleep(args.sleep)
-        print('-' * 40 + f'END\t{datetime.now()}')
+            print(f'\nRunning config №{config_idx + 1}...')
+            print(f'\tscript name: {script_path}')
+            if 'args' in run_config:
+                print(f'\tscript arguments: {run_config["args"]}')
+
+            print('-' * 40 + f'START\t{datetime.now()}')
+            subprocess.run(script_args)
+            sleep(args.sleep)
+            print('-' * 40 + f'END\t{datetime.now()}')
+
+        print('\n\n')

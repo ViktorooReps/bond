@@ -151,16 +151,15 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config):
+    def __init__(self, config: RobertaConfig):
         super().__init__(config)
         self.num_labels = config.num_labels
 
         self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.hidden2label = nn.Linear(config.hidden_size, self.num_labels)
+        # TODO: add biLSTM layer?
         self.crf = MarginalCRF(self.num_labels)
-
-        self.use_kldiv = config.use_kldiv_loss
 
         self.init_weights()
 
@@ -178,7 +177,8 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         inputs_embeds=None,
         labels=None,
         label_mask=None,
-        self_training: bool = False
+        self_training: bool = False,
+        use_kldiv_loss: bool = False
     ):
         outputs = self.roberta(
             input_ids,
@@ -202,7 +202,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
             if labels.shape != marginal_labels.shape:
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
-            if self_training and self.use_kldiv:
+            if self_training and use_kldiv_loss:
                 kld_loss = KLDivLoss()
                 loss = kld_loss(marginal_labels.view(-1, self.num_labels)[label_mask == 1],
                                 labels.view(-1, self.num_labels)[label_mask == 1])

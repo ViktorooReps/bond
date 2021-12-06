@@ -4,7 +4,7 @@
     "args": [
       "--experiment_name=crf",
       "--dataset=conll03",
-      "--model_type=roberta-original",
+      "--model_type=roberta-crf",
       "--model_name=roberta-base",
       "--steps_per_epoch=875",
       "--learning_rate=3e-05",
@@ -24,9 +24,9 @@
   {
     "script": "train.py",
     "args": [
-      "--experiment_name=crf",
+      "--experiment_name=crf-kldiv",
       "--dataset=conll03",
-      "--model_type=roberta-original",
+      "--model_type=roberta-crf",
       "--model_name=roberta-base",
       "--steps_per_epoch=875",
       "--learning_rate=3e-05",
