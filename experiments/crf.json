@@ -2,28 +2,7 @@
   {
     "script": "train.py",
     "args": [
-      "--experiment_name=crf-improvement-1-baseline",
-      "--dataset=conll03",
-      "--model_type=roberta-crf",
-      "--model_name=roberta-base",
-      "--steps_per_epoch=435",
-      "--learning_rate=3e-05",
-      "--lr_decrease=0.8",
-      "--weight_decay=0",
-      "--adam_epsilon=1e-08",
-      "--adam_beta1=0.9",
-      "--adam_beta2=0.98",
-      "--ner_fit_epochs=3",
-      "--self_training_epochs=50",
-      "--label_keep_threshold=0.9",
-      "--lr_st_decay=0.8",
-      "--seed=1"
-    ]
-  },
-  {
-    "script": "train.py",
-    "args": [
-      "--experiment_name=crf-improvement-1-kldiv",
+      "--experiment_name=crf-improvement-2-kldiv-no-freq-correction",
       "--dataset=conll03",
       "--model_type=roberta-crf",
       "--model_name=roberta-base",
@@ -45,7 +24,7 @@
   {
     "script": "train.py",
     "args": [
-      "--experiment_name=crf-improvement-1-kldiv-freq-correction",
+      "--experiment_name=crf-improvement-2-kldiv-freq-correction",
       "--dataset=conll03",
       "--model_type=roberta-crf",
       "--model_name=roberta-base",

@@ -2,7 +2,7 @@ import json
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import torch
 from torch import LongTensor
@@ -46,9 +46,18 @@ def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
             tag_type, tag_group = tag.split('-')
             if tag_type == 'B':
                 extension_tag = 'I-' + tag_group
-                label_extensions[label] = tags_dict[extension_tag]
+            elif tag_type == 'I':
+                extension_tag = tag
+            else:
+                raise ValueError(f'Unknown tag type {tag_type}!')
+
+            label_extensions[label] = tags_dict[extension_tag]
 
     return label_extensions
+
+
+def load_transformed_dataset(dataset_name: DatasetName, target_recall: float, target_precision: Union[str, float] = 'distant'):
+    pass
 
 
 def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,

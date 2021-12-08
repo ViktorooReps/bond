@@ -101,8 +101,11 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
                     active_loss = active_loss & (label_mask.view(-1) == 1)
                 active_logits = logits.view(-1, self.num_labels)[active_loss]
 
-            if labels.shape == logits.shape:
-                loss_fct = KLDivLoss()
+            if self_training:
+                if use_kldiv_loss:
+                    loss_fct = KLDivLoss()
+                else:
+                    loss_fct = CrossEntropyLoss()
                 if attention_mask is not None or label_mask is not None:
                     active_labels = labels.view(-1, self.num_labels)[active_loss]
                     loss = loss_fct(active_logits, active_labels)
@@ -122,7 +125,6 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
 
 
 def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
-    # TODO: implement UNK tokens
     labels[labels < 0] = 0
     return one_hot(labels, num_labels)
 
@@ -133,7 +135,7 @@ class JunctionStrategy(Enum):
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
 
 
-class CRFForBERT(nn.Module):
+class CRFForBERT(nn.Module):  # TODO
     """BERT-aware MarginalCRF implementation"""
 
     def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy):

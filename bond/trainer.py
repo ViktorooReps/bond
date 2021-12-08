@@ -7,6 +7,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict
+from bond.model import JunctionStrategy
 from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency
 
 try:
@@ -16,7 +17,8 @@ except ImportError:
 
 
 def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer) -> Scores:
-    eval_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+    eval_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length,
+                                junction_strategy=JunctionStrategy(args.junction_strategy))
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.batch_size)
 
@@ -57,7 +59,8 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
     st_epochs = args.self_training_epochs
     ner_epochs = args.ner_fit_epochs
 
-    train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length)
+    train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length,
+                                 junction_strategy=JunctionStrategy(args.junction_strategy))
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size)
