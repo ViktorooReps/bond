@@ -1,4 +1,7 @@
-from torch import FloatTensor
+from enum import Enum
+from typing import Optional
+
+from torch import FloatTensor, LongTensor, Tensor
 from torch.nn.functional import one_hot
 from transformers import RobertaModel, BertPreTrainedModel, RobertaConfig
 import torch.nn as nn
@@ -45,7 +48,7 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config):
+    def __init__(self, config, **__):
         super().__init__(config)
         self.num_labels = config.num_labels
 
@@ -69,6 +72,8 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
         inputs_embeds=None,
         labels=None,
         label_mask=None,
+        self_training: bool = False,
+        use_kldiv_loss: bool = False
     ):
 
         outputs = self.roberta(
@@ -122,6 +127,58 @@ def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     return one_hot(labels, num_labels)
 
 
+class JunctionStrategy(Enum):
+    IGNORE_WITH_MASK = 'mask_ignore'
+    FILL_WITH_I = 'labels_fill'
+    IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
+
+
+class CRFForBERT(nn.Module):
+    """BERT-aware MarginalCRF implementation"""
+
+    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy):
+        super().__init__()
+
+        self.dropout = nn.Dropout(dropout_prob)
+        self.hidden2labels = nn.Linear(hidden_size, num_labels)
+        self.crf = MarginalCRF(num_labels)
+        self.strategy = junction_strategy
+
+    def forward(self, seq_repr: Optional[Tensor] = None, labels: Optional[LongTensor] = None, label_mask: Optional[Tensor] = None,
+                self_training: bool = False,  use_kldiv_loss: bool = False):
+
+        batch_size, seq_len, num_labels = seq_repr.shape
+
+        if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or JunctionStrategy.FILL_WITH_I:
+            seq_repr = self.dropout(seq_repr)
+            label_scores = self.hidden2labels(seq_repr)
+
+            marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
+
+            outputs = marginal_labels
+
+            if labels is not None:
+                # might be a problem when labels are not soft
+                if labels.shape != marginal_labels.shape:
+                    labels = convert_hard_to_soft_labels(labels, self.num_labels)
+
+                if self_training and use_kldiv_loss:
+                    kld_loss = KLDivLoss()
+                    loss = kld_loss(marginal_labels.view(-1, self.num_labels)[label_mask == 1],
+                                    labels.view(-1, self.num_labels)[label_mask == 1])
+                else:
+                    loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
+
+                outputs = (loss,) + outputs
+
+            return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
+
+        elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+
 class RobertaCRFForTokenClassification(BertPreTrainedModel):
     r"""
         **labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
@@ -151,7 +208,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config: RobertaConfig):
+    def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK):
         super().__init__(config)
         self.num_labels = config.num_labels
 
@@ -193,6 +250,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         sequence_output = self.dropout(final_embedding)
         label_scores = self.hidden2label(sequence_output)
 
+        # TODO: experiment with different BERT-CRF junctions
         marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
 
         outputs = (marginal_labels, final_embedding,) + outputs[2:]  # add hidden states and attention if they are here

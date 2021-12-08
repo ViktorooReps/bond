@@ -9,6 +9,7 @@ from torch import LongTensor
 from torch.utils.data import TensorDataset
 from transformers import PreTrainedTokenizer
 
+from bond.model import JunctionStrategy
 
 PAD_LABEL_ID = -1
 
@@ -35,8 +36,24 @@ def load_tags_dict(dataset_name: DatasetName) -> Dict[str, int]:
     return tags_dict
 
 
+def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
+    tags_dict = load_tags_dict(dataset_name)
+    label_extensions = {}
+    for tag, label in tags_dict.items():
+        if tag == 'O':
+            label_extensions[label] = label
+        else:
+            tag_type, tag_group = tag.split('-')
+            if tag_type == 'B':
+                extension_tag = 'I-' + tag_group
+                label_extensions[label] = tags_dict[extension_tag]
+
+    return label_extensions
+
+
 def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                 max_seq_length: int, sep_token: str = 'SEP') -> TensorDataset:
+                 max_seq_length: int, sep_token: str = 'SEP',
+                 junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK) -> TensorDataset:
     """Returns TensorDataset of tensors:
     [0]: token ids
     [1]: label ids
@@ -44,7 +61,7 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
     [3]: attention mask
     """
 
-    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name])
+    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, junction_strategy.value])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
     if cached_dataset_file.exists():
         dataset: TensorDataset = torch.load(cached_dataset_file)
@@ -55,6 +72,8 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
 
         with open(dataset_file) as f:
             json_dataset = json.load(f)
+
+        label_extensions = load_label_extensions(dataset_name)
 
         # token ids, label ids, label mask, attention mask
         examples: List[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]] = []
@@ -70,7 +89,11 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
                     continue
 
                 tokens.extend(word_tokens)
-                label_ids.extend([label] + [PAD_LABEL_ID] * (len(word_tokens) - 1))
+                extension_label_id = PAD_LABEL_ID
+                if junction_strategy == JunctionStrategy.FILL_WITH_I:
+                    extension_label_id = label_extensions[label]
+
+                label_ids.extend([label] + [extension_label_id] * (len(word_tokens) - 1))
 
             special_token_count = 2  # RoBERTa uses double [SEP] token
             if len(tokens) > max_seq_length - special_token_count:

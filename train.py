@@ -9,7 +9,7 @@ import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
 
 from bond.data import DatasetName, DatasetType, load_tags_dict
-from bond.model import RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
+from bond.model import JunctionStrategy, RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
 from bond.trainer import evaluate, train
 from bond.utils import Scores, set_seed
 
@@ -76,6 +76,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="number of epochs for NER fitting stage")
     parser.add_argument("--warmup_steps", default=200, type=int,
                         help="Linear warmup over warmup_steps.")
+    parser.add_argument('--junction_strategy', default='mask_ignore', type=str,
+                        help='One of ' + ', '.join(junction.value for junction in JunctionStrategy))
 
     parser.add_argument("--logging_steps", type=int, default=100,
                         help="Log every X updates steps.")
@@ -132,15 +134,17 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
 
     # Training
-    model = model_class.from_pretrained(args.model_name, config=config)  # TODO: do caching
+    model = model_class.from_pretrained(args.model_name, config=config, junction_strategy=JunctionStrategy(args.junction_strategy))
     model, global_step, tr_loss = train(args, model, dataset, tokenizer, tb_writer)
 
     # TODO: save model
 
     # Evaluation
     results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
+    logging.info('Results on test: ' + str(results))
 
-    logging.info('Results: ' + str(results))
+    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+    logging.info('Results on valid: ' + str(results))
 
     return results
 

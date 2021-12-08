@@ -87,7 +87,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             inputs = {"input_ids": batch[0], "labels": batch[1], "label_mask": batch[2], "attention_mask": batch[3]}
 
             model.train()
-            outputs = model(**inputs)
+            outputs = model(**inputs, self_training=False)
             loss, logits, final_embeds = outputs[0], outputs[1], outputs[2]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
@@ -145,7 +145,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             inputs = {"input_ids": batch[0], "labels": pred_labels, "label_mask": batch[2] | teacher_mask,  "attention_mask": batch[3]}
 
             model.train()
-            outputs = model(**inputs, use_kldiv_loss=args.use_kldiv_loss)
+            outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
             loss, logits, final_embeds = outputs[0], outputs[1], outputs[2]  # model outputs are always tuple in pytorch-transformers
 
             if gradient_accumulation_steps > 1:
