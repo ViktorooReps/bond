@@ -87,7 +87,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
 
     def log_metrics(res: Scores, prefix: str) -> None:
         for metric_name, metric_value in res.items():
-            tb_writer.add_scalar(f"{metric_name}{prefix}", metric_value, global_step)
+            tb_writer.add_scalar(f"{metric_name}_{prefix}", metric_value, global_step)
             tb_writer.add_scalar(f"{metric_name}", metric_value, global_step)
 
         for group_idx, group in enumerate(optimizer.param_groups):
@@ -127,7 +127,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 optimizer.step()
-                scheduler.step()  # Update learning rate schedule # TODO: do normal scheduling
+                scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
                 global_step += 1
 

@@ -6,6 +6,7 @@ from torch.nn.functional import one_hot
 from transformers import RobertaModel, BertPreTrainedModel, RobertaConfig
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, KLDivLoss
+from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from bond.crf import MarginalCRF
 
@@ -133,6 +134,7 @@ class JunctionStrategy(Enum):
     IGNORE_WITH_MASK = 'mask_ignore'
     FILL_WITH_I = 'labels_fill'
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
+    TOKEN_WISE_AVERAGE_BEFORE_CRF = 'average_before_crf'
 
 
 class CRFForBERT(nn.Module):  # TODO
@@ -157,7 +159,7 @@ class CRFForBERT(nn.Module):  # TODO
 
             marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
 
-            outputs = marginal_labels
+            outputs = (marginal_labels,)
 
             if labels is not None:
                 # might be a problem when labels are not soft
@@ -165,17 +167,20 @@ class CRFForBERT(nn.Module):  # TODO
                     labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
                 if self_training and use_kldiv_loss:
+                    # TODO: breaks here
                     kld_loss = KLDivLoss()
-                    loss = kld_loss(marginal_labels.view(-1, self.num_labels)[label_mask == 1],
-                                    labels.view(-1, self.num_labels)[label_mask == 1])
+                    batch_mask = (label_mask.unsqueeze(0).repeat(batch_size, 1, 1) == 1)
+                    loss = kld_loss(marginal_labels[batch_mask], labels[batch_mask])
                 else:
                     loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
 
                 outputs = (loss,) + outputs
 
-            return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
+            return outputs  # (loss), scores
 
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
+            raise NotImplementedError
+        elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
             raise NotImplementedError
         else:
             raise NotImplementedError
@@ -215,10 +220,8 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         self.num_labels = config.num_labels
 
         self.roberta = RobertaModel(config)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.hidden2label = nn.Linear(config.hidden_size, self.num_labels)
-        # TODO: add biLSTM layer?
-        self.crf = MarginalCRF(self.num_labels)
+        self.head = CRFForBERT(num_labels=self.num_labels, hidden_size=config.hidden_size, dropout_prob=config.hidden_dropout_prob,
+                               junction_strategy=junction_strategy)
 
         self.init_weights()
 
@@ -226,49 +229,20 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     def returns_probs(self) -> bool:
         return True
 
-    def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        label_mask=None,
-        self_training: bool = False,
-        use_kldiv_loss: bool = False
-    ):
-        outputs = self.roberta(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-        )
+    def forward(self, input_ids: Tensor, attention_mask: Optional[Tensor] = None, token_type_ids: Optional[Tensor] = None,
+                position_ids: Optional[Tensor] = None, head_mask: Optional[Tensor] = None, inputs_embeds: Optional[Tensor] = None,
+                labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None, self_training: bool = False,
+                use_kldiv_loss: bool = False):
+
+        outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.roberta(input_ids, attention_mask=attention_mask,
+                                                                             token_type_ids=token_type_ids, position_ids=position_ids,
+                                                                             head_mask=head_mask, inputs_embeds=inputs_embeds)
+        # outputs: final_embedding, pooler_output, (hidden_states), (attentions)
 
         final_embedding = outputs[0]
-        sequence_output = self.dropout(final_embedding)
-        label_scores = self.hidden2label(sequence_output)
+        head_outputs = self.head(final_embedding, labels=labels, label_mask=label_mask, self_training=self_training,
+                                 use_kldiv_loss=use_kldiv_loss)  # (loss), scores
 
-        # TODO: experiment with different BERT-CRF junctions
-        marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
-
-        outputs = (marginal_labels, final_embedding,) + outputs[2:]  # add hidden states and attention if they are here
-
-        if labels is not None:
-            # might be a problem when labels are not soft
-            if labels.shape != marginal_labels.shape:
-                labels = convert_hard_to_soft_labels(labels, self.num_labels)
-
-            if self_training and use_kldiv_loss:
-                kld_loss = KLDivLoss()
-                loss = kld_loss(marginal_labels.view(-1, self.num_labels)[label_mask == 1],
-                                labels.view(-1, self.num_labels)[label_mask == 1])
-            else:
-                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
-
-            outputs = (loss,) + outputs
+        outputs = head_outputs + (final_embedding,) + outputs[2:]
 
         return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
