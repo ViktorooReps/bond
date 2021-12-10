@@ -80,41 +80,44 @@ def initialize_roberta(args, model: PreTrainedModel):
     params_1 = [p for n, p in named_parameters if ("pooler" in n or "roberta" not in n)
                 and not any(nd in n for nd in no_decay)]
 
-    head_params = {"params": params_0, "lr": head_lr, "weight_decay": 0.0}
+    head_params = {"params": params_0, "lr": head_lr, "weight_decay": 0.0, "name": "head_params_without_decay"}
     opt_parameters.append(head_params)
 
-    head_params = {"params": params_1, "lr": head_lr, "weight_decay": decay}
+    head_params = {"params": params_1, "lr": head_lr, "weight_decay": decay, "name": "head_params_with_decay"}
     opt_parameters.append(head_params)
 
     # === 12 Hidden layers ==========================================================
-    # TODO: do normal init to compare with this version
     for layer in range(11, -1, -1):
         params_0 = [p for n, p in named_parameters if f"encoder.layer.{layer}." in n
                     and any(nd in n for nd in no_decay)]
         params_1 = [p for n, p in named_parameters if f"encoder.layer.{layer}." in n
                     and not any(nd in n for nd in no_decay)]
 
-        layer_params = {"params": params_0, "lr": lr, "weight_decay": 0.0}
-        opt_parameters.append(layer_params)
+        if params_0:
+            layer_params = {"params": params_0, "lr": lr, "weight_decay": 0.0, "name": f"layer{layer}_params_without_decay"}
+            opt_parameters.append(layer_params)
 
-        layer_params = {"params": params_1, "lr": lr, "weight_decay": decay}
-        opt_parameters.append(layer_params)
+        if params_1:
+            layer_params = {"params": params_1, "lr": lr, "weight_decay": decay, "name": f"layer{layer}_params_with_decay"}
+            opt_parameters.append(layer_params)
 
         lr *= args.lr_decrease
         decay *= args.decay_decrease
 
-        # === Embeddings layer ==========================================================
+    # === Embeddings layer ==========================================================
 
     params_0 = [p for n, p in named_parameters if "embeddings" in n
                 and any(nd in n for nd in no_decay)]
     params_1 = [p for n, p in named_parameters if "embeddings" in n
                 and not any(nd in n for nd in no_decay)]
 
-    embed_params = {"params": params_0, "lr": lr, "weight_decay": 0.0}
-    opt_parameters.append(embed_params)
+    if params_0:
+        embed_params = {"params": params_0, "lr": lr, "weight_decay": 0.0, "name": f"embeddings_without_decay"}
+        opt_parameters.append(embed_params)
 
-    embed_params = {"params": params_1, "lr": lr, "weight_decay": decay}
-    opt_parameters.append(embed_params)
+    if params_1:
+        embed_params = {"params": params_1, "lr": lr, "weight_decay": decay, "name": f"embeddings_with_decay"}
+        opt_parameters.append(embed_params)
 
     optimizer = AdamW(opt_parameters, lr=args.learning_rate, eps=args.adam_epsilon, betas=(args.adam_beta1, args.adam_beta2))
     scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps)

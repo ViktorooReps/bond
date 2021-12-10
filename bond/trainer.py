@@ -76,8 +76,6 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
     st_epochs = args.self_training_epochs
     ner_epochs = args.ner_fit_epochs if args.ner_fit_steps < 0 else int(math.ceil(args.ner_fit_steps / max_steps_per_epoch))
 
-    total_batches = len(train_dataloader)
-
     model, optimizer, scheduler = initialize_roberta(args, model)
 
     # Train!
@@ -87,6 +85,14 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
 
     tr_loss, logging_loss = 0.0, 0.0
 
+    def log_metrics(res: Scores, prefix: str) -> None:
+        for metric_name, metric_value in res.items():
+            tb_writer.add_scalar(f"{metric_name}{prefix}", metric_value, global_step)
+            tb_writer.add_scalar(f"{metric_name}", metric_value, global_step)
+
+        for group_idx, group in enumerate(optimizer.param_groups):
+            tb_writer.add_scalar(f"lr_{group.get('name', f'group{group_idx}')}", group['lr'], global_step)
+
     # Fitting BERT to NER task
     for ner_fit_epoch in range(ner_epochs):
 
@@ -94,6 +100,8 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             steps_left = args.ner_fit_steps - global_step
             batches_in_current_step = global_batch % gradient_accumulation_steps
             total_batches = min(len(train_dataloader), steps_left * gradient_accumulation_steps - batches_in_current_step)
+        else:
+            total_batches = len(train_dataloader)
 
         epoch_iterator = tqdm(train_dataloader, desc=f'Fitting NER on {ner_fit_epoch + 1}/{ner_epochs} epoch', total=total_batches)
         for batch_idx, batch in enumerate(epoch_iterator):
@@ -123,21 +131,12 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 model.zero_grad()
                 global_step += 1
 
-            if global_step > 0 and global_step % args.logging_steps == 0:
-                # Log metrics
-                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
-
-                for key, value in results.items():
-                    tb_writer.add_scalar("dev_{}".format(key), value, global_step)
-                    tb_writer.add_scalar("dev_ner_{}".format(key), value, global_step)
-
-                for group_idx, group in enumerate(optimizer.param_groups):
-                    tb_writer.add_scalar(f"lr_group_{group_idx}", group['lr'], global_step)
-
-                tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                tb_writer.add_scalar("lr_ner", scheduler.get_last_lr()[0], global_step)
-                tb_writer.add_scalar("loss_ner", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                logging_loss = tr_loss
+                if global_step % args.logging_steps == 0:
+                    # Log metrics
+                    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+                    results = {k + '_dev': v for k, v in results.items()}
+                    log_metrics({**results, 'loss': (tr_loss - logging_loss) / args.logging_steps}, 'ner')
+                    logging_loss = tr_loss
 
     self_training_teacher_model = deepcopy(model)
     self_training_teacher_model.eval()
@@ -148,6 +147,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             self_training_teacher_model = deepcopy(model)
             self_training_teacher_model.eval()
 
+        total_batches = len(train_dataloader)
         epoch_iterator = tqdm(train_dataloader, desc=f'Self training on {self_training_epoch + 1}/{st_epochs} epoch', total=total_batches)
 
         for batch_idx, batch in enumerate(epoch_iterator):
@@ -195,21 +195,12 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 model.zero_grad()
                 global_step += 1
 
-            if global_step % args.logging_steps == 0:
-                # Log metrics
-                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
-
-                for key, value in results.items():
-                    tb_writer.add_scalar("dev_{}".format(key), value, global_step)
-                    tb_writer.add_scalar("dev_self_training_{}".format(key), value, global_step)
-
-                for group_idx, group in enumerate(optimizer.param_groups):
-                    tb_writer.add_scalar(f"lr_group_{group_idx}", group['lr'], global_step)
-
-                tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                tb_writer.add_scalar("lr_self_training", scheduler.get_lr()[0], global_step)
-                tb_writer.add_scalar("loss_self_training", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                logging_loss = tr_loss
+                if global_step % args.logging_steps == 0:
+                    # Log metrics
+                    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+                    results = {k + '_dev': v for k, v in results.items()}
+                    log_metrics({**results, 'loss': (tr_loss - logging_loss) / args.logging_steps}, 'self_training')
+                    logging_loss = tr_loss
 
         # update lr of all layers
         for group in optimizer.param_groups:
