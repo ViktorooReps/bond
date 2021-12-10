@@ -1,0 +1,52 @@
+[
+  {
+    "script": "train.py",
+    "args": [
+      "--experiment_name=crf-lstm-baseline-ignore-before-lstm",
+      "--dataset=conll03",
+      "--model_type=roberta-crf",
+      "--model_name=roberta-base",
+      "--gradient_accumulation_steps=2",
+      "--head_learning_rate=1e-03",
+      "--bert_learning_rate=1e-05",
+      "--lr_decrease=0.8",
+      "--weight_decay=0",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--warmup_steps=200",
+      "--ner_fit_epochs=2",
+      "--self_training_epochs=50",
+      "--label_keep_threshold=0.9",
+      "--junction_strategy=mask_ignore_before_lstm",
+      "--add_lstm",
+      "--lr_st_decay=0.95",
+      "--seed=1"
+    ]
+  },
+  {
+    "script": "train.py",
+    "args": [
+      "--experiment_name=crf-lstm-baseline-ignore-before-crf",
+      "--dataset=conll03",
+      "--model_type=roberta-crf",
+      "--model_name=roberta-base",
+      "--gradient_accumulation_steps=2",
+      "--head_learning_rate=1e-03",
+      "--bert_learning_rate=1e-05",
+      "--lr_decrease=0.8",
+      "--weight_decay=0",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--warmup_steps=200",
+      "--ner_fit_epochs=2",
+      "--self_training_epochs=50",
+      "--label_keep_threshold=0.9",
+      "--junction_strategy=mask_ignore_before_lstm",
+      "--add_lstm",
+      "--lr_st_decay=0.95",
+      "--seed=1"
+    ]
+  }
+]
