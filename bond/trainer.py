@@ -1,3 +1,4 @@
+import math
 from copy import deepcopy
 from typing import List
 
@@ -73,7 +74,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
     max_steps_per_epoch = len(train_dataloader) // gradient_accumulation_steps
 
     st_epochs = args.self_training_epochs
-    ner_epochs = args.ner_fit_epochs if args.ner_fit_steps < 0 else args.ner_fit_steps // max_steps_per_epoch
+    ner_epochs = args.ner_fit_epochs if args.ner_fit_steps < 0 else int(math.ceil(args.ner_fit_steps / max_steps_per_epoch))
 
     total_batches = len(train_dataloader)
 
