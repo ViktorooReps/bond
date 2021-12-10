@@ -143,6 +143,7 @@ class CRFForBERT(nn.Module):  # TODO
     def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy):
         super().__init__()
 
+        self.num_labels = num_labels
         self.dropout = nn.Dropout(dropout_prob)
         self.hidden2labels = nn.Linear(hidden_size, num_labels)
         self.crf = MarginalCRF(num_labels)
@@ -162,15 +163,16 @@ class CRFForBERT(nn.Module):  # TODO
             outputs = (marginal_labels,)
 
             if labels is not None:
-                # might be a problem when labels are not soft
                 if labels.shape != marginal_labels.shape:
+                    # convert hard labels into onehots
                     labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
                 if self_training and use_kldiv_loss:
-                    # TODO: breaks here
                     kld_loss = KLDivLoss()
-                    batch_mask = (label_mask.unsqueeze(0).repeat(batch_size, 1, 1) == 1)
-                    loss = kld_loss(marginal_labels[batch_mask], labels[batch_mask])
+                    raveled_marginal_labels = marginal_labels.contiguous().view(-1, self.num_labels)
+                    raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
+                    raveled_mask = (label_mask.contiguous().view(-1) == 1)
+                    loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
                 else:
                     loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
 
@@ -179,7 +181,10 @@ class CRFForBERT(nn.Module):  # TODO
             return outputs  # (loss), scores
 
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
-            raise NotImplementedError
+            # apply mask to BERT output
+            masked_seqs = []
+            # pad sequences to equal length
+
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
             raise NotImplementedError
         else:
