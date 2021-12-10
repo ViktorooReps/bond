@@ -56,8 +56,6 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 
 def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
-    st_epochs = args.self_training_epochs
-    ner_epochs = args.ner_fit_epochs
 
     train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length,
                                  junction_strategy=JunctionStrategy(args.junction_strategy))
@@ -65,26 +63,46 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size)
 
-    gradient_accumulation_steps = len(train_dataloader) // args.steps_per_epoch
-    total_batches = args.steps_per_epoch * gradient_accumulation_steps
+    if args.steps_per_epoch == -1 and args.gradient_accumulation_steps == -1:
+        raise ValueError('Cannot deduce number of steps per epoch! Set gradient_accumulation_steps or steps_per_epoch!')
+    elif args.gradient_accumulation_steps < 0:
+        gradient_accumulation_steps = len(train_dataloader) // args.steps_per_epoch
+    else:
+        gradient_accumulation_steps = args.gradient_accumulation_steps
+
+    max_epoch_batches = len(train_dataloader) // args.batch_size
+    max_steps_per_epoch = max_epoch_batches // gradient_accumulation_steps
+
+    st_epochs = args.self_training_epochs
+    ner_epochs = args.ner_fit_epochs if args.ner_fit_steps < 0 else args.ner_fit_steps // max_steps_per_epoch
+
+    total_batches = max_epoch_batches
 
     model, optimizer, scheduler = initialize_roberta(args, model)
 
     # Train!
 
     global_step = 0
+    global_batch = 0
 
     tr_loss, logging_loss = 0.0, 0.0
 
     # Fitting BERT to NER task
     for ner_fit_epoch in range(ner_epochs):
 
+        if args.ner_fit_steps > 0:
+            steps_left = args.ner_fit_steps - global_step
+            batches_in_current_step = global_batch % gradient_accumulation_steps
+            total_batches = min(max_epoch_batches, steps_left * gradient_accumulation_steps - batches_in_current_step)
+
         epoch_iterator = tqdm(train_dataloader, desc=f'Fitting NER on {ner_fit_epoch + 1}/{ner_epochs} epoch', total=total_batches)
         for batch_idx, batch in enumerate(epoch_iterator):
 
-            if batch_idx >= total_batches:
+            if batch_idx >= total_batches or 0 < args.ner_fit_steps <= global_step:
                 epoch_iterator.close()
                 continue
+
+            global_batch += 1
 
             batch = tuple(t.to(args.device) for t in batch)
             inputs = {"input_ids": batch[0], "labels": batch[1], "label_mask": batch[2], "attention_mask": batch[3]}
@@ -97,7 +115,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             loss.backward()
 
             tr_loss += loss.item()
-            if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            if global_batch % gradient_accumulation_steps == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 optimizer.step()
@@ -105,24 +123,30 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 model.zero_grad()
                 global_step += 1
 
-                if global_step % args.logging_steps == 0:
-                    # Log metrics
-                    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+            if global_step % args.logging_steps == 0:
+                # Log metrics
+                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
 
-                    for key, value in results.items():
-                        tb_writer.add_scalar("dev_{}".format(key), value, global_step)
-                        tb_writer.add_scalar("dev_ner_{}".format(key), value, global_step)
+                for key, value in results.items():
+                    tb_writer.add_scalar("dev_{}".format(key), value, global_step)
+                    tb_writer.add_scalar("dev_ner_{}".format(key), value, global_step)
 
-                    tb_writer.add_scalar("lr", scheduler.get_last_lr()[0], global_step)
-                    tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                    tb_writer.add_scalar("lr_ner", scheduler.get_last_lr()[0], global_step)
-                    tb_writer.add_scalar("loss_ner", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                    logging_loss = tr_loss
+                for group_idx, group in enumerate(optimizer.param_groups):
+                    tb_writer.add_scalar(f"lr_group_{group_idx}", group['lr'], global_step)
+
+                tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
+                tb_writer.add_scalar("lr_ner", scheduler.get_last_lr()[0], global_step)
+                tb_writer.add_scalar("loss_ner", (tr_loss - logging_loss) / args.logging_steps, global_step)
+                logging_loss = tr_loss
+
+    self_training_teacher_model = deepcopy(model)
+    self_training_teacher_model.eval()
 
     # Self training
     for self_training_epoch in range(st_epochs):
-        self_training_teacher_model = deepcopy(model)
-        self_training_teacher_model.eval()
+        if args.period < 0:
+            self_training_teacher_model = deepcopy(model)
+            self_training_teacher_model.eval()
 
         epoch_iterator = tqdm(train_dataloader, desc=f'Self training on {self_training_epoch + 1}/{st_epochs} epoch', total=total_batches)
 
@@ -131,6 +155,12 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             if batch_idx >= total_batches:
                 epoch_iterator.close()
                 continue
+
+            global_batch += 1
+
+            if args.period > 0 and global_step % args.period == 0:
+                self_training_teacher_model = deepcopy(model)
+                self_training_teacher_model.eval()
 
             batch = tuple(t.to(args.device) for t in batch)
 
@@ -142,7 +172,8 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             pred_labels = outputs[0]
             if args.correct_frequency:
                 pred_labels = soft_frequency(logits=pred_labels, power=2, probs=self_training_teacher_model.returns_probs)
-            _threshold = args.label_keep_threshold % 1
+
+            _threshold = args.label_keep_threshold  # TODO: keep entities with respect to entropy?
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
 
             inputs = {"input_ids": batch[0], "labels": pred_labels, "label_mask": batch[2] | teacher_mask,  "attention_mask": batch[3]}
@@ -157,27 +188,28 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             loss.backward()
 
             tr_loss += loss.item()
-            if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            if global_batch % gradient_accumulation_steps == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 optimizer.step()
-                # scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
                 global_step += 1
 
-                if global_step % args.logging_steps == 0:
-                    # Log metrics
-                    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+            if global_step % args.logging_steps == 0:
+                # Log metrics
+                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
 
-                    for key, value in results.items():
-                        tb_writer.add_scalar("dev_{}".format(key), value, global_step)
-                        tb_writer.add_scalar("dev_self_training_{}".format(key), value, global_step)
+                for key, value in results.items():
+                    tb_writer.add_scalar("dev_{}".format(key), value, global_step)
+                    tb_writer.add_scalar("dev_self_training_{}".format(key), value, global_step)
 
-                    tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
-                    tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                    tb_writer.add_scalar("lr_self_training", scheduler.get_lr()[0], global_step)
-                    tb_writer.add_scalar("loss_self_training", (tr_loss - logging_loss) / args.logging_steps, global_step)
-                    logging_loss = tr_loss
+                for group_idx, group in enumerate(optimizer.param_groups):
+                    tb_writer.add_scalar(f"lr_group_{group_idx}", group['lr'], global_step)
+
+                tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
+                tb_writer.add_scalar("lr_self_training", scheduler.get_lr()[0], global_step)
+                tb_writer.add_scalar("loss_self_training", (tr_loss - logging_loss) / args.logging_steps, global_step)
+                logging_loss = tr_loss
 
         # update lr of all layers
         for group in optimizer.param_groups:

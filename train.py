@@ -51,19 +51,26 @@ def create_parser() -> argparse.ArgumentParser:
                              "sequences shorter will be padded.")
     parser.add_argument("--no_cuda", action="store_true",
                         help="Avoid using CUDA when available")
+    parser.add_argument("--logging_steps", type=int, default=100,
+                        help="Log every X updates steps.")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="random seed for initialization")
 
+    # General training parameters
     parser.add_argument("--batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
-    parser.add_argument("--steps_per_epoch", type=int, default=850,
+    parser.add_argument("--steps_per_epoch", type=int, default=-1,
                         help="Number of optimization steps per epoch.")
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=-1,
+                        help='Number of batches in each step.')
     parser.add_argument("--learning_rate", default=1e-5, type=float,
                         help="The initial learning rate for Adam.")
-    parser.add_argument("--lr_decrease", default=0.9, type=float,
+    parser.add_argument("--lr_decrease", default=1.0, type=float,
                         help="LR decrease with layer depth")
-    parser.add_argument("--decay_decrease", default=0.9, type=float,
-                        help="Weight decay decrease with layer depth")
     parser.add_argument("--weight_decay", default=1e-4, type=float,
                         help="Weight decay if we apply some.")
+    parser.add_argument("--decay_decrease", default=1.0, type=float,
+                        help="Weight decay decrease with layer depth")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
                         help="Epsilon for Adam optimizer.")
     parser.add_argument("--adam_beta1", default=0.9, type=float,
@@ -72,28 +79,30 @@ def create_parser() -> argparse.ArgumentParser:
                         help="BETA2 for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm for gradient clipping.")
-    parser.add_argument("--ner_fit_epochs", default=1, type=int,
-                        help="number of epochs for NER fitting stage")
-    parser.add_argument("--warmup_steps", default=200, type=int,
-                        help="Linear warmup over warmup_steps.")
     parser.add_argument('--junction_strategy', default='mask_ignore', type=str,
                         help='One of ' + ', '.join(junction.value for junction in JunctionStrategy))
 
-    parser.add_argument("--logging_steps", type=int, default=100,
-                        help="Log every X updates steps.")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="random seed for initialization")
+    # NER training parameters
+    parser.add_argument("--ner_fit_epochs", default=1, type=int,
+                        help="number of epochs for NER fitting stage")
+    parser.add_argument('--ner_fit_steps', default=-1, type=int,
+                        help='Number of NER fitting steps. -1 for using epochs')
+    parser.add_argument("--warmup_steps", default=200, type=int,
+                        help="Linear warmup over warmup_steps.")
 
-    # self-training
+    # Self-training parameters
     parser.add_argument('--self_training_epochs', type=int, default=50,
                         help='number of epochs for self training stage')
     parser.add_argument('--label_keep_threshold', type=float, default=0.9,
                         help='Label keeping threshold for self training stage')
-    parser.add_argument("--lr_st_decay", default=0.5, type=float,
+    parser.add_argument("--lr_st_decay", default=1.0, type=float,
                         help="Learning rate decay between stages for self training stage")
     parser.add_argument('--correct_frequency', action='store_true',
                         help='Do soft label frequency correction before choosing labels with threshold')
-    parser.add_argument('--use_kldiv_loss', action='store_true')
+    parser.add_argument('--use_kldiv_loss', action='store_true',
+                        help='Use KLDivLoss during self training')
+    parser.add_argument('--period', default=-1, type=int,
+                        help='Period for updating teacher model. -1 for once per epoch')
 
     return parser
 
