@@ -39,11 +39,15 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
             eval_loss += tmp_eval_loss.item()
 
         nb_eval_steps += 1
+
         batch_raveled_logits = torch.cat(list(logits.detach().cpu()), dim=0)
-        batch_raveled_label_mask = torch.cat(list(label_mask.cpu()), dim=0)
+        batch_raveled_output_label_mask = torch.cat(list(label_mask.cpu()), dim=0)
+        batch_raveled_input_label_mask = torch.cat(list(inputs['label_mask'].cpu()), dim=0)
         batch_raveled_true_labels = torch.cat(list(inputs['labels'].cpu()), dim=0)
-        batch_predicted_labels = torch.argmax(batch_raveled_logits, dim=-1).masked_select(batch_raveled_label_mask > 0)
-        batch_true_labels = batch_raveled_true_labels.masked_select(batch_raveled_label_mask > 0)
+        batch_predicted_labels = torch.argmax(batch_raveled_logits, dim=-1).masked_select(batch_raveled_output_label_mask > 0)
+        batch_true_labels = batch_raveled_true_labels.masked_select(batch_raveled_input_label_mask > 0)
+
+        assert len(batch_predicted_labels) == len(batch_true_labels)
 
         predicted_labels.extend(batch_predicted_labels.tolist())
         true_labels.extend(batch_true_labels.tolist())

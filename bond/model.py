@@ -167,21 +167,21 @@ class CRFForBERT(nn.Module):
 
         def apply_mask(seq_representation: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
             device = seq_representation.device
-            batch_size, seq_len, num_labels = seq_representation.shape
+            batch_size, seq_len, num_features = seq_representation.shape
 
             # apply mask to BERT output
-            masked_seqs = [seq[mask == 1] for seq, mask in zip(seq_representation, mask)]
+            masked_seqs = [seq[mask > 0] for seq, mask in zip(seq_representation, mask)]
 
             # pad sequences to equal length
             max_len = max(len(seq) for seq in masked_seqs)
             add_lens = [max_len - len(seq) for seq in masked_seqs]
-            pad_tensor = torch.tensor([1.0 / num_labels] * num_labels, device=device).view(1, num_labels)
+            pad_tensor = torch.zeros(num_features, device=device).view(1, num_features)
 
             padded_seqs = [torch.cat([seq] + [pad_tensor] * add_len, dim=0) for seq, add_len in zip(masked_seqs, add_lens)]
             seq_representation = torch.stack(padded_seqs)
 
             # create new mask based on paddings
-            batch_size, seq_len, num_labels = seq_representation.shape
+            batch_size, seq_len, num_features = seq_representation.shape
 
             def create_mask(padding: int) -> Tensor:
                 new_mask = torch.ones(seq_len, device=device)
@@ -197,17 +197,17 @@ class CRFForBERT(nn.Module):
         if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or self.strategy == JunctionStrategy.FILL_WITH_I:
             pass
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
-            if self.lstm is not None:
-                seq_repr = self.dropout(seq_repr)
-                seq_repr, _ = self.lstm(seq_repr)
-            # apply mask to lstm output
-            seq_repr, label_mask = apply_mask(seq_repr, label_mask)
-        elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
             # apply mask to BERT output
             seq_repr, label_mask = apply_mask(seq_repr, label_mask)
             if self.lstm is not None:
                 seq_repr = self.dropout(seq_repr)
                 seq_repr, _ = self.lstm(seq_repr)
+        elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
+            if self.lstm is not None:  # TODO: does not work
+                seq_repr = self.dropout(seq_repr)
+                seq_repr, _ = self.lstm(seq_repr)
+            # apply mask to LSTM output
+            seq_repr, label_mask = apply_mask(seq_repr, label_mask)
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
             raise NotImplementedError  # TODO
         else:
