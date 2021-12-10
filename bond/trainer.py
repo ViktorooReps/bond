@@ -70,13 +70,12 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
     else:
         gradient_accumulation_steps = args.gradient_accumulation_steps
 
-    max_epoch_batches = len(train_dataloader) // args.batch_size
-    max_steps_per_epoch = max_epoch_batches // gradient_accumulation_steps
+    max_steps_per_epoch = len(train_dataloader) // gradient_accumulation_steps
 
     st_epochs = args.self_training_epochs
     ner_epochs = args.ner_fit_epochs if args.ner_fit_steps < 0 else args.ner_fit_steps // max_steps_per_epoch
 
-    total_batches = max_epoch_batches
+    total_batches = len(train_dataloader)
 
     model, optimizer, scheduler = initialize_roberta(args, model)
 
@@ -93,7 +92,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
         if args.ner_fit_steps > 0:
             steps_left = args.ner_fit_steps - global_step
             batches_in_current_step = global_batch % gradient_accumulation_steps
-            total_batches = min(max_epoch_batches, steps_left * gradient_accumulation_steps - batches_in_current_step)
+            total_batches = min(len(train_dataloader), steps_left * gradient_accumulation_steps - batches_in_current_step)
 
         epoch_iterator = tqdm(train_dataloader, desc=f'Fitting NER on {ner_fit_epoch + 1}/{ner_epochs} epoch', total=total_batches)
         for batch_idx, batch in enumerate(epoch_iterator):
@@ -123,7 +122,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 model.zero_grad()
                 global_step += 1
 
-            if global_step % args.logging_steps == 0:
+            if global_step > 0 and global_step % args.logging_steps == 0:
                 # Log metrics
                 results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
 
