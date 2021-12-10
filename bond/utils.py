@@ -68,8 +68,8 @@ def initialize_roberta(args, model: PreTrainedModel):
     # According to AAAMLP book by A. Thakur, we generally do not use any decay
     # for bias and LayerNorm.weight layers.
     no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
-    init_lr = args.learning_rate
-    head_lr = args.learning_rate
+    init_lr = args.bert_learning_rate
+    head_lr = args.head_learning_rate
     lr = init_lr
     decay = args.weight_decay
 
@@ -102,7 +102,6 @@ def initialize_roberta(args, model: PreTrainedModel):
             opt_parameters.append(layer_params)
 
         lr *= args.lr_decrease
-        decay *= args.decay_decrease
 
     # === Embeddings layer ==========================================================
 
@@ -119,7 +118,7 @@ def initialize_roberta(args, model: PreTrainedModel):
         embed_params = {"params": params_1, "lr": lr, "weight_decay": decay, "name": f"embeddings_with_decay"}
         opt_parameters.append(embed_params)
 
-    optimizer = AdamW(opt_parameters, lr=args.learning_rate, eps=args.adam_epsilon, betas=(args.adam_beta1, args.adam_beta2))
+    optimizer = AdamW(opt_parameters, eps=args.adam_epsilon, betas=(args.adam_beta1, args.adam_beta2))
     scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps)
 
     model.zero_grad()

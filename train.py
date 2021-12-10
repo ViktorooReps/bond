@@ -63,14 +63,14 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Number of optimization steps per epoch.")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=-1,
                         help='Number of batches in each step.')
-    parser.add_argument("--learning_rate", default=1e-5, type=float,
-                        help="The initial learning rate for Adam.")
+    parser.add_argument("--bert_learning_rate", default=1e-5, type=float,
+                        help="The initial learning rate for RoBERTa.")
+    parser.add_argument('--head_learning_rate', default=1e-3, type=float,
+                        help='The initial learning rate for model\' head: LSTM-CRF or CRF')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
                         help="LR decrease with layer depth")
     parser.add_argument("--weight_decay", default=1e-4, type=float,
                         help="Weight decay if we apply some.")
-    parser.add_argument("--decay_decrease", default=1.0, type=float,
-                        help="Weight decay decrease with layer depth")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
                         help="Epsilon for Adam optimizer.")
     parser.add_argument("--adam_beta1", default=0.9, type=float,
@@ -81,6 +81,12 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Max gradient norm for gradient clipping.")
     parser.add_argument('--junction_strategy', default='mask_ignore', type=str,
                         help='One of ' + ', '.join(junction.value for junction in JunctionStrategy))
+    parser.add_argument('--add_lstm', action='store_true',
+                        help='Add LSTM layer between BERT and CRF.')
+    parser.add_argument('--lstm_hidden_size', default=128, type=int,
+                        help='Size of LSTM layer.')
+    parser.add_argument('--lstm_num_layers', default=2, type=int,
+                        help='Number of LSTM layers')
 
     # NER training parameters
     parser.add_argument("--ner_fit_epochs", default=1, type=int,
@@ -143,7 +149,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
 
     # Training
-    model = model_class.from_pretrained(args.model_name, config=config, junction_strategy=JunctionStrategy(args.junction_strategy))
+    model = model_class.from_pretrained(args.model_name, config=config, junction_strategy=JunctionStrategy(args.junction_strategy),
+                                        add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers)
     model, global_step, tr_loss = train(args, model, dataset, tokenizer, tb_writer)
 
     # TODO: save model

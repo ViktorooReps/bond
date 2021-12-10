@@ -1,6 +1,7 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
+import torch
 from torch import FloatTensor, LongTensor, Tensor
 from torch.nn.functional import one_hot
 from transformers import RobertaModel, BertPreTrainedModel, RobertaConfig
@@ -134,61 +135,108 @@ class JunctionStrategy(Enum):
     IGNORE_WITH_MASK = 'mask_ignore'
     FILL_WITH_I = 'labels_fill'
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
+    IGNORE_WITH_MASK_BEFORE_LSTM = 'mask_ignore_before_lstm'
     TOKEN_WISE_AVERAGE_BEFORE_CRF = 'average_before_crf'
+    TOKEN_WISE_AVERAGE_BEFORE_LSTM = 'average_before_lstm'
 
 
-class CRFForBERT(nn.Module):  # TODO
+class CRFForBERT(nn.Module):
     """BERT-aware MarginalCRF implementation"""
 
-    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy):
+    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy, add_lstm: bool = False,
+                 lstm_layers: int = 2, lstm_hidden: int = 128):
         super().__init__()
 
         self.num_labels = num_labels
         self.dropout = nn.Dropout(dropout_prob)
-        self.hidden2labels = nn.Linear(hidden_size, num_labels)
+        if add_lstm:
+            self.lstm = nn.LSTM(input_size=hidden_size, hidden_size=lstm_hidden, num_layers=lstm_layers, bidirectional=True,
+                                dropout=dropout_prob, batch_first=True)
+        else:
+            self.lstm = None
+        self.hidden2labels = nn.Linear(hidden_size if not add_lstm else 2 * lstm_hidden, num_labels)
         self.crf = MarginalCRF(num_labels)
         self.strategy = junction_strategy
 
-    def forward(self, seq_repr: Optional[Tensor] = None, labels: Optional[LongTensor] = None, label_mask: Optional[Tensor] = None,
-                self_training: bool = False,  use_kldiv_loss: bool = False):
+    def forward(self, seq_repr: Tensor, labels: Optional[LongTensor] = None, label_mask: Optional[Tensor] = None,
+                self_training: bool = False, use_kldiv_loss: bool = False):
+        """Returns (loss), marginal tag distribution, label mask
 
-        batch_size, seq_len, num_labels = seq_repr.shape
+        loss is returned only when labels are given
+        label_mask is returned because it might change"""
 
-        if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or JunctionStrategy.FILL_WITH_I:
-            seq_repr = self.dropout(seq_repr)
-            label_scores = self.hidden2labels(seq_repr)
+        def apply_mask(seq_representation: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
+            device = seq_representation.device
+            batch_size, seq_len, num_labels = seq_representation.shape
 
-            marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
+            # apply mask to BERT output
+            masked_seqs = [seq[mask == 1] for seq, mask in zip(seq_representation, mask)]
 
-            outputs = (marginal_labels,)
+            # pad sequences to equal length
+            max_len = max(len(seq) for seq in masked_seqs)
+            add_lens = [max_len - len(seq) for seq in masked_seqs]
+            pad_tensor = torch.tensor([1.0 / num_labels] * num_labels, device=device).view(1, num_labels)
 
-            if labels is not None:
-                if labels.shape != marginal_labels.shape:
-                    # convert hard labels into onehots
-                    labels = convert_hard_to_soft_labels(labels, self.num_labels)
+            padded_seqs = [torch.cat([seq] + [pad_tensor] * add_len, dim=0) for seq, add_len in zip(masked_seqs, add_lens)]
+            seq_representation = torch.stack(padded_seqs)
 
-                if self_training and use_kldiv_loss:
-                    kld_loss = KLDivLoss()
-                    raveled_marginal_labels = marginal_labels.contiguous().view(-1, self.num_labels)
-                    raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
-                    raveled_mask = (label_mask.contiguous().view(-1) == 1)
-                    loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
-                else:
-                    loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
+            # create new mask based on paddings
+            batch_size, seq_len, num_labels = seq_representation.shape
 
-                outputs = (loss,) + outputs
+            def create_mask(padding: int) -> Tensor:
+                new_mask = torch.ones(seq_len, device=device)
+                if padding > 0:
+                    new_mask[-padding:] = 0.0
 
-            return outputs  # (loss), scores
+                return new_mask
 
+            new_label_mask = torch.stack([create_mask(add_len) for add_len in add_lens])
+
+            return seq_representation, new_label_mask
+
+        if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or self.strategy == JunctionStrategy.FILL_WITH_I:
+            pass
+        elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
+            if self.lstm is not None:
+                seq_repr = self.dropout(seq_repr)
+                seq_repr, _ = self.lstm(seq_repr)
+            # apply mask to lstm output
+            seq_repr, label_mask = apply_mask(seq_repr, label_mask)
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
             # apply mask to BERT output
-            masked_seqs = []
-            # pad sequences to equal length
-
+            seq_repr, label_mask = apply_mask(seq_repr, label_mask)
+            if self.lstm is not None:
+                seq_repr = self.dropout(seq_repr)
+                seq_repr, _ = self.lstm(seq_repr)
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
-            raise NotImplementedError
+            raise NotImplementedError  # TODO
         else:
             raise NotImplementedError
+
+        seq_repr = self.dropout(seq_repr)
+        label_scores = self.hidden2labels(seq_repr)
+
+        marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
+
+        outputs = marginal_labels, label_mask
+
+        if labels is not None:
+            if labels.shape != marginal_labels.shape:
+                # convert hard labels into one-hots
+                labels = convert_hard_to_soft_labels(labels, self.num_labels)
+
+            if self_training and use_kldiv_loss:
+                kld_loss = KLDivLoss()
+                raveled_marginal_labels = marginal_labels.contiguous().view(-1, self.num_labels)
+                raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
+                raveled_mask = (label_mask.contiguous().view(-1) == 1)
+                loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
+            else:
+                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
+
+            outputs = (loss,) + outputs
+
+        return outputs  # (loss), scores, label_mask
 
 
 class RobertaCRFForTokenClassification(BertPreTrainedModel):
@@ -220,13 +268,14 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK):
+    def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK,
+                 add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128):
         super().__init__(config)
         self.num_labels = config.num_labels
 
         self.roberta = RobertaModel(config)
         self.head = CRFForBERT(num_labels=self.num_labels, hidden_size=config.hidden_size, dropout_prob=config.hidden_dropout_prob,
-                               junction_strategy=junction_strategy)
+                               junction_strategy=junction_strategy, add_lstm=add_lstm, lstm_hidden=lstm_hidden, lstm_layers=lstm_layers)
 
         self.init_weights()
 
@@ -246,8 +295,8 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
 
         final_embedding = outputs[0]
         head_outputs = self.head(final_embedding, labels=labels, label_mask=label_mask, self_training=self_training,
-                                 use_kldiv_loss=use_kldiv_loss)  # (loss), scores
+                                 use_kldiv_loss=use_kldiv_loss)  # (loss), scores, label_mask
 
         outputs = head_outputs + (final_embedding,) + outputs[2:]
 
-        return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
+        return outputs  # (loss), scores, label_mask, final_embedding, (hidden_states), (attentions)
