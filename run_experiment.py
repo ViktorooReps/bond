@@ -1,5 +1,8 @@
+import io
 import json
+import os
 import subprocess
+import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, RawTextHelpFormatter
 from datetime import datetime
 from time import sleep
@@ -63,9 +66,28 @@ if __name__ == '__main__':
             if 'args' in run_config:
                 print(f'\tscript arguments: {run_config["args"]}')
 
-            print('-' * 40 + f'START\t{datetime.now()}')
-            subprocess.run(script_args)
-            sleep(args.sleep)
-            print('-' * 40 + f'END\t{datetime.now()}')
+            if 'save_output' not in run_config:
+                print('-' * 40 + f'START\t{datetime.now()}')
+                subprocess.run(script_args)
+                print('-' * 40 + f'END\t{datetime.now()}')
+                print('Argument save_output is not specified! Output will be lost!')
+            else:
+                print('-' * 40 + f'START\t{datetime.now()}')
+
+                log_filename = run_config['save_output']
+                os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+                with io.open(log_filename, 'wb') as log_file, io.open(log_filename, 'rb') as reader:
+                    process = subprocess.Popen(script_args, stdout=log_file)
+                    while process.poll() is None:
+                        sys.stdout.write(reader.read().decode(sys.stdout.encoding))
+                        sleep(0.1)
+                    sys.stdout.write(reader.read().decode(sys.stdout.encoding))
+
+                print('-' * 40 + f'END\t{datetime.now()}')
+                print(f'Saved script output to {log_filename}.')
+
+            if args.sleep > 0:
+                print(f'Sleeping for {args.sleep} seconds...')
+                sleep(args.sleep)
 
         print('\n\n')
