@@ -170,7 +170,7 @@ class CRFForBERT(nn.Module):
             batch_size, seq_len, num_features = sub_tokens_repr.shape
 
             # apply mask to sub tokens
-            masked_seqs = [seq[mask > 0] for seq, mask in zip(sub_tokens_repr, mask)]
+            masked_seqs = [seq[seq_mask > 0] for seq, seq_mask in zip(sub_tokens_repr, mask)]
             assert len(masked_seqs) == batch_size
 
             # pad sequences to equal length
