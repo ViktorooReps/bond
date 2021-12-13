@@ -1,6 +1,7 @@
 [
   {
     "script": "train.py",
+    "save_output": "logs/baseline-paper/script_output.log",
     "args": [
       "--experiment_name=baseline-paper",
       "--dataset=conll03",
@@ -26,6 +27,7 @@
   },
   {
     "script": "train.py",
+    "save_output": "logs/baseline-paper-layer-decay/script_output.log",
     "args": [
       "--experiment_name=baseline-paper-layer-decay",
       "--dataset=conll03",
