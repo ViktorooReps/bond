@@ -140,6 +140,10 @@ class JunctionStrategy(Enum):
     TOKEN_WISE_AVERAGE_BEFORE_LSTM = 'average_before_lstm'
 
 
+class JunctionError(Exception):
+    pass
+
+
 class CRFForBERT(nn.Module):
     """BERT-aware MarginalCRF implementation"""
 
@@ -193,20 +197,22 @@ class CRFForBERT(nn.Module):
                 return new_mask
 
             new_label_mask = torch.stack([create_mask(add_len) for add_len in add_lens])
-            assert new_label_mask.shape == (batch_size, max_len, num_features)
+            assert new_label_mask.shape == (batch_size, max_len)
 
             return tokens_repr, new_label_mask
 
         if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or self.strategy == JunctionStrategy.FILL_WITH_I:
             pass
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
+            if self.lstm is None:
+                raise JunctionError(f'Cannot apply strategy {self.strategy.value} with no LSTM layer!')
+
             # apply mask to BERT output
             seq_repr, label_mask = apply_mask(seq_repr, label_mask)
-            if self.lstm is not None:
-                seq_repr = self.dropout(seq_repr)
-                seq_repr, _ = self.lstm(seq_repr)
+            seq_repr = self.dropout(seq_repr)
+            seq_repr, _ = self.lstm(seq_repr)
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
-            if self.lstm is not None:  # TODO: does not work
+            if self.lstm is not None:
                 seq_repr = self.dropout(seq_repr)
                 seq_repr, _ = self.lstm(seq_repr)
             # apply mask to LSTM output
