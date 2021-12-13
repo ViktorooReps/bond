@@ -115,12 +115,14 @@ def create_parser() -> argparse.ArgumentParser:
 
 def main(parser: argparse.ArgumentParser) -> Scores:
     args = parser.parse_args()
-    run_name = strftime("%Y-%m-%d_%H:%M:%S", localtime())
+    run_name = strftime("%Y-%m-%d_%Hh%Mm%Ss", localtime())
 
     warnings.simplefilter("ignore", UserWarning)
 
     tb_dir = Path(os.path.join('tfboard', args.experiment_name))
     log_dir = Path(os.path.join('logs', args.experiment_name))
+
+    log_name = run_name + '.log'
 
     # Create output directory if needed
     if not tb_dir.exists():
@@ -128,7 +130,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     if not log_dir.exists():
         os.makedirs(log_dir)
 
-    logging.basicConfig(format='[%(asctime)s] %(message)s', filename=os.path.join(log_dir, run_name), level=logging.INFO)
+    logging.basicConfig(format='[%(asctime)s] %(message)s', filename=os.path.join(log_dir, log_name), level=logging.INFO)
     tb_writer = SummaryWriter(os.path.join(tb_dir, run_name))
 
     logging.info('Arguments: ' + str(args))

@@ -165,12 +165,13 @@ class CRFForBERT(nn.Module):
         loss is returned only when labels are given
         label_mask is returned because it might change"""
 
-        def apply_mask(seq_representation: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
-            device = seq_representation.device
-            batch_size, seq_len, num_features = seq_representation.shape
+        def apply_mask(sub_tokens_repr: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
+            device = sub_tokens_repr.device
+            batch_size, seq_len, num_features = sub_tokens_repr.shape
 
-            # apply mask to BERT output
-            masked_seqs = [seq[mask > 0] for seq, mask in zip(seq_representation, mask)]
+            # apply mask to sub tokens
+            masked_seqs = [seq[mask > 0] for seq, mask in zip(sub_tokens_repr, mask)]
+            assert len(masked_seqs) == batch_size
 
             # pad sequences to equal length
             max_len = max(len(seq) for seq in masked_seqs)
@@ -178,10 +179,11 @@ class CRFForBERT(nn.Module):
             pad_tensor = torch.zeros(num_features, device=device).view(1, num_features)
 
             padded_seqs = [torch.cat([seq] + [pad_tensor] * add_len, dim=0) for seq, add_len in zip(masked_seqs, add_lens)]
-            seq_representation = torch.stack(padded_seqs)
+            tokens_repr = torch.stack(padded_seqs)
+            assert tokens_repr.shape == (batch_size, max_len, num_features)
 
-            # create new mask based on paddings
-            batch_size, seq_len, num_features = seq_representation.shape
+            # create new mask based on padded sequence
+            batch_size, seq_len, num_features = tokens_repr.shape
 
             def create_mask(padding: int) -> Tensor:
                 new_mask = torch.ones(seq_len, device=device)
@@ -191,8 +193,9 @@ class CRFForBERT(nn.Module):
                 return new_mask
 
             new_label_mask = torch.stack([create_mask(add_len) for add_len in add_lens])
+            assert new_label_mask.shape == (batch_size, max_len, num_features)
 
-            return seq_representation, new_label_mask
+            return tokens_repr, new_label_mask
 
         if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or self.strategy == JunctionStrategy.FILL_WITH_I:
             pass

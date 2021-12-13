@@ -1,0 +1,5 @@
+torch~=1.10.0
+numpy~=1.21.4
+tqdm~=4.62.3
+tensorboardX~=2.4.1
+transformers~=4.13.0
