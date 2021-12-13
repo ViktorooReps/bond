@@ -91,7 +91,7 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
         sequence_output = self.dropout(final_embedding)
         logits = self.classifier(sequence_output)
 
-        outputs = (logits, final_embedding, ) + outputs[2:]  # add hidden states and attention if they are here
+        outputs = (logits, label_mask, final_embedding, ) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
 
             # Only keep active parts of the loss
@@ -123,7 +123,7 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
 
             outputs = (loss,) + outputs
 
-        return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
+        return outputs  # (loss), scores, label_mask, final_embedding, (hidden_states), (attentions)
 
 
 def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
