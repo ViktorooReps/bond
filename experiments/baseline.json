@@ -17,9 +17,9 @@
       "--warmup=200",
       "--gradient_accumulation_steps=2",
       "--ner_fit_epochs=2",
-      "--self_training_epochs=50",
+      "--self_training_epochs=25",
       "--label_keep_threshold=0.9",
-      "--lr_st_decay=0.95",
+      "--lr_st_decay=0.9",
       "--correct_frequency",
       "--use_kldiv_loss",
       "--seed=42"
@@ -43,9 +43,9 @@
       "--warmup=200",
       "--gradient_accumulation_steps=2",
       "--ner_fit_epochs=2",
-      "--self_training_epochs=50",
+      "--self_training_epochs=25",
       "--label_keep_threshold=0.9",
-      "--lr_st_decay=0.95",
+      "--lr_st_decay=0.9",
       "--correct_frequency",
       "--use_kldiv_loss",
       "--seed=42"
