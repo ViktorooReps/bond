@@ -114,6 +114,7 @@ def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
 
 
 class JunctionStrategy(Enum):
+    NONE = 'none'
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
     IGNORE_WITH_MASK_BEFORE_LSTM = 'mask_ignore_before_lstm'
     TOKEN_WISE_AVERAGE_BEFORE_CRF = 'average_before_crf'
@@ -174,7 +175,7 @@ class CRFForBERT(nn.Module):
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_LSTM:
             raise NotImplementedError  # TODO
         else:
-            raise NotImplementedError
+            ValueError(f'Junction type {self.strategy} is not permitted for {self}!')
 
         seq_repr = self.dropout(seq_repr)
         label_scores = self.hidden2labels(seq_repr)

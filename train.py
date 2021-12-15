@@ -79,7 +79,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help="BETA2 for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm for gradient clipping.")
-    parser.add_argument('--junction_strategy', default='mask_ignore', type=str,
+    parser.add_argument('--junction_strategy', default='none', type=str,
                         help='One of ' + ', '.join(junction.value for junction in JunctionStrategy))
     parser.add_argument('--add_lstm', action='store_true',
                         help='Add LSTM layer between BERT and CRF.')
