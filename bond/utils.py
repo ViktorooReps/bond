@@ -140,4 +140,3 @@ def soft_frequency(logits: Tensor, power: int = 2, probs: bool = False):
     p = t / torch.sum(t, dim=2, keepdim=True)
 
     return p
-

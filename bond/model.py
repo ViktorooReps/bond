@@ -192,7 +192,7 @@ class CRFForBERT(nn.Module):
             def create_mask(padding: int) -> Tensor:
                 new_mask = torch.ones(seq_len, device=device)
                 if padding > 0:
-                    new_mask[-padding:] = 0.0
+                    new_mask[-padding:] = 0
 
                 return new_mask
 
@@ -238,10 +238,10 @@ class CRFForBERT(nn.Module):
                 kld_loss = KLDivLoss()
                 raveled_marginal_labels = marginal_labels.contiguous().view(-1, self.num_labels)
                 raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
-                raveled_mask = (label_mask.contiguous().view(-1) == 1)
+                raveled_mask = (label_mask.contiguous().view(-1) > 0)
                 loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
             else:
-                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask == 1))
+                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask > 0))
 
             outputs = (loss,) + outputs
 
