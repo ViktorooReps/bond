@@ -3,8 +3,9 @@ from typing import Dict, Iterable, Optional, Tuple
 
 import numpy as np
 import torch
-from torch import Tensor
+from torch import Tensor, BoolTensor
 from torch.nn import Softmax
+from torch.nn.functional import pad
 from transformers import AdamW, PreTrainedModel, get_constant_schedule_with_warmup
 
 Scores = Dict[str, float]
@@ -140,3 +141,38 @@ def soft_frequency(logits: Tensor, power: int = 2, probs: bool = False):
     p = t / torch.sum(t, dim=2, keepdim=True)
 
     return p
+
+
+def apply_mask(sub_tokens_repr: Tensor, mask: BoolTensor) -> Tuple[Tensor, BoolTensor]:
+    device = sub_tokens_repr.device
+    batch_size, seq_len, num_features = sub_tokens_repr.shape
+
+    # apply mask to sub tokens
+    masked_seqs = [seq[seq_mask] for seq, seq_mask in zip(sub_tokens_repr, mask)]
+    assert len(masked_seqs) == batch_size
+
+    # pad sequences to equal length
+    max_len = max(len(seq) for seq in masked_seqs)
+    add_lens = [max_len - len(seq) for seq in masked_seqs]
+
+    def pad_seq(sequence: Tensor, added_len: int) -> Tensor:
+        return pad(sequence, (0, added_len, 0, 0), value=0)
+
+    padded_seqs = [pad_seq(seq, add_len) for seq, add_len in zip(masked_seqs, add_lens)]
+    tokens_repr = torch.stack(padded_seqs)
+    assert tokens_repr.shape == (batch_size, max_len, num_features)
+
+    # create new mask based on padded sequence
+    batch_size, seq_len, num_features = tokens_repr.shape
+
+    def create_mask(padding: int) -> Tensor:
+        new_mask = torch.ones(seq_len, device=device)
+        if padding > 0:
+            new_mask[-padding:] = 0
+
+        return new_mask
+
+    new_label_mask = torch.stack([create_mask(add_len) for add_len in add_lens])
+    assert new_label_mask.shape == (batch_size, max_len)
+
+    return tokens_repr, new_label_mask.bool()

@@ -1,15 +1,17 @@
 import json
+import logging
 import os
 from enum import Enum
+from functools import partial
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Iterable, Callable
 
 import torch
-from torch import LongTensor
-from torch.utils.data import TensorDataset
+from torch import LongTensor, BoolTensor
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
-from bond.model import JunctionStrategy
 
 PAD_LABEL_ID = -1
 
@@ -56,24 +58,63 @@ def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
     return label_extensions
 
 
+Example = Tuple[LongTensor, BoolTensor, LongTensor]  # (token ids, token mask, labels)
+BertExample = Tuple[LongTensor, BoolTensor, BoolTensor, LongTensor, BoolTensor]  # (tok ids, tok mask, attention mask, labels, label mask)
+
+
+def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExample:
+    token_ids = []
+    token_masks = []
+    attention_masks = []
+    labels = []
+    label_masks = []
+
+    for t_ids, t_mask, ls in batch:
+        token_ids.append(t_ids)
+        token_masks.append(t_mask)
+        attention_masks.append(torch.ones(len(t_ids)))
+        labels.append(ls)
+        label_masks.append(torch.ones(len(ls)))
+
+    return pad_sequence(token_ids, batch_first=True, padding_value=pad_token).long(), \
+        pad_sequence(token_masks, batch_first=True, padding_value=0).bool(), \
+        pad_sequence(attention_masks, batch_first=True, padding_value=1).bool(), \
+        pad_sequence(labels, batch_first=True, padding_value=pad_label).long(), \
+        pad_sequence(label_masks, batch_first=True, padding_value=0).bool()
+
+
+class SubTokenDataset(Dataset):
+
+    def __init__(self, examples: Iterable[Example], token_pad: int, label_pad: int = PAD_LABEL_ID):
+        """
+        examples: list of (token ids, token mask, labels)
+        """
+        self._examples = tuple(examples)
+        self._token_pad = token_pad
+        self._label_pad = label_pad
+
+    @property
+    def collate_fn(self) -> Callable:
+        return partial(bert_collate_fn, pad_token=self._token_pad, pad_label=self._label_pad)
+
+    def __len__(self) -> int:
+        return len(self._examples)
+
+    def __getitem__(self, idx: int) -> Example:
+        return self._examples[idx]
+
+
 def load_transformed_dataset(dataset_name: DatasetName, target_recall: float, target_precision: Union[str, float] = 'distant'):
     pass
 
 
 def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                 max_seq_length: int, sep_token: str = 'SEP',
-                 junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK) -> TensorDataset:
-    """Returns TensorDataset of tensors:
-    [0]: token ids
-    [1]: label ids
-    [2]: label mask (0 - padded label, 1 - actual label)
-    [3]: attention mask
-    """
+                 max_seq_length: int, sep_token: str = 'SEP') -> SubTokenDataset:
 
-    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, junction_strategy.value])
+    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
     if cached_dataset_file.exists():
-        dataset: TensorDataset = torch.load(cached_dataset_file)
+        dataset: SubTokenDataset = torch.load(cached_dataset_file)
     else:
         dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, dataset_type.value + '.json'))
         if not dataset_file.exists():
@@ -82,32 +123,28 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
         with open(dataset_file) as f:
             json_dataset = json.load(f)
 
-        label_extensions = load_label_extensions(dataset_name)
-
-        # token ids, label ids, label mask, attention mask
-        examples: List[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]] = []
+        # token ids, token_mask, label ids
+        examples: List[Example] = []
         for entry_idx, entry in enumerate(json_dataset):
             words = entry['str_words']
             labels = entry['tags']
 
             tokens = []
-            label_ids = []
+            token_mask = []
             for word, label in zip(words, labels):
                 word_tokens = tokenizer.tokenize(word)
                 if not word_tokens:
                     continue
 
                 tokens.extend(word_tokens)
-                extension_label_id = PAD_LABEL_ID
-                if junction_strategy == JunctionStrategy.FILL_WITH_I:
-                    extension_label_id = label_extensions[label]
-
-                label_ids.extend([label] + [extension_label_id] * (len(word_tokens) - 1))
+                token_mask.extend([True] + [False] * (len(word_tokens) - 1))
 
             special_token_count = 2  # RoBERTa uses double [SEP] token
             if len(tokens) > max_seq_length - special_token_count:
-                tokens = tokens[: (max_seq_length - special_token_count)]
-                label_ids = label_ids[: (max_seq_length - special_token_count)]
+                logging.warning('Extra long sentence detected!')
+                continue
+                # tokens = tokens[: (max_seq_length - special_token_count)]
+                # label_ids = label_ids[: (max_seq_length - special_token_count)]
 
             # The convention in BERT is:
             # (a) For sequence pairs:
@@ -125,39 +162,18 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
             # it easier for the model to learn the concept of sequences.
             #
             # For classification tasks, the first vector (corresponding to [CLS]) is
-            # used as as the "sentence vector". Note that this only makes sense because
+            # used as  the "sentence vector". Note that this only makes sense because
             # the entire model is fine-tuned.
 
             tokens += [sep_token, sep_token]  # double [SEP] token for RoBERTa
-            label_ids += [PAD_LABEL_ID, PAD_LABEL_ID]
-
-            pad_token = tokenizer.pad_token
-            padding_length = max_seq_length - len(tokens)
-            tokens += [pad_token] * padding_length
-            label_ids += [PAD_LABEL_ID] * padding_length
-
-            label_mask = [0 if label_id == PAD_LABEL_ID else 1 for label_id in label_ids]   # used to calculate loss
-            attention_mask = [0 if token == pad_token else 1 for token in tokens]           # used for attention layers
+            token_mask += [False, False]
 
             token_ids: List[int] = tokenizer.convert_tokens_to_ids(tokens)
 
-            examples.append((tuple(token_ids), tuple(label_ids), tuple(label_mask), tuple(attention_mask)))
-
-        # group tuples
-        grouped_token_ids: List[Tuple[int, ...]] = []
-        grouped_label_ids: List[Tuple[int, ...]] = []
-        grouped_label_masks: List[Tuple[int, ...]] = []
-        grouped_attention_masks: List[Tuple[int, ...]] = []
-
-        for t_ids, l_ids, l_mask, att_mask in examples:
-            grouped_token_ids.append(t_ids)
-            grouped_label_ids.append(l_ids)
-            grouped_label_masks.append(l_mask)
-            grouped_attention_masks.append(att_mask)
+            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels)))
 
         # convert tp tensors and build dataset
-        dataset = TensorDataset(LongTensor(grouped_token_ids), LongTensor(grouped_label_ids), LongTensor(grouped_label_masks),
-                                LongTensor(grouped_attention_masks))
+        dataset = SubTokenDataset(examples, token_pad=tokenizer.pad_token_id)
 
         # cache built dataset
         torch.save(dataset, cached_dataset_file)

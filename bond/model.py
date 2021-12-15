@@ -1,8 +1,7 @@
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional
 
-import torch
-from torch import FloatTensor, LongTensor, Tensor
+from torch import FloatTensor, LongTensor, Tensor, BoolTensor
 from torch.nn.functional import one_hot
 from transformers import RobertaModel, BertPreTrainedModel, RobertaConfig
 import torch.nn as nn
@@ -10,6 +9,7 @@ from torch.nn import CrossEntropyLoss, KLDivLoss
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from bond.crf import MarginalCRF
+from bond.utils import apply_mask
 
 ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP = {
     "roberta-base": "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-base-pytorch_model.bin",
@@ -64,66 +64,48 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
     def returns_probs(self) -> bool:
         return False
 
-    def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        label_mask=None,
-        self_training: bool = False,
-        use_kldiv_loss: bool = False
-    ):
+    def forward(self, input_ids: LongTensor, token_mask: BoolTensor, attention_mask: BoolTensor,
+                token_type_ids: Optional[LongTensor] = None, position_ids: Optional[LongTensor] = None,
+                head_mask: Optional[BoolTensor] = None, inputs_embeds: Optional[Tensor] = None,
+                labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
+                self_training: bool = False, use_kldiv_loss: bool = False):
 
-        outputs = self.roberta(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-        )
+        outputs = self.roberta(input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, position_ids=position_ids,
+                               head_mask=head_mask, inputs_embeds=inputs_embeds)
 
         final_embedding = outputs[0]
-        sequence_output = self.dropout(final_embedding)
+        masked_sequence, new_label_mask = apply_mask(final_embedding, token_mask)
+        if label_mask is not None:
+            assert (new_label_mask == label_mask).all()
+        else:
+            label_mask = new_label_mask
+
+        sequence_output = self.dropout(masked_sequence)
         logits = self.classifier(sequence_output)
 
-        outputs = (logits, label_mask, final_embedding, ) + outputs[2:]  # add hidden states and attention if they are here
+        outputs = (logits, final_embedding, ) + outputs[2:]  # add hidden states and attention if they are here
         if labels is not None:
 
             # Only keep active parts of the loss
-            if attention_mask is not None or label_mask is not None:
-                active_loss = True
-                if attention_mask is not None:
-                    active_loss = attention_mask.view(-1) == 1
-                if label_mask is not None:
-                    active_loss = active_loss & (label_mask.view(-1) == 1)
-                active_logits = logits.view(-1, self.num_labels)[active_loss]
+            active_loss = label_mask.view(-1)
+            active_logits = logits.view(-1, self.num_labels)[active_loss]
 
             if self_training:
                 if use_kldiv_loss:
                     loss_fct = KLDivLoss()
                 else:
                     loss_fct = CrossEntropyLoss()
-                if attention_mask is not None or label_mask is not None:
-                    active_labels = labels.view(-1, self.num_labels)[active_loss]
-                    loss = loss_fct(active_logits, active_labels)
-                else:
-                    loss = loss_fct(logits, labels)
+
+                active_labels = labels.view(-1, self.num_labels)[active_loss]
+                loss = loss_fct(active_logits, active_labels)
             else:
                 loss_fct = CrossEntropyLoss()
-                if attention_mask is not None or label_mask is not None:
-                    active_labels = labels.view(-1)[active_loss]
-                    loss = loss_fct(active_logits, active_labels)
-                else:
-                    loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+                active_labels = labels.view(-1)[active_loss]
+                loss = loss_fct(active_logits, active_labels)
 
             outputs = (loss,) + outputs
 
-        return outputs  # (loss), scores, label_mask, final_embedding, (hidden_states), (attentions)
+        return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
 
 
 def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
@@ -132,8 +114,6 @@ def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
 
 
 class JunctionStrategy(Enum):
-    IGNORE_WITH_MASK = 'mask_ignore'
-    FILL_WITH_I = 'labels_fill'
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
     IGNORE_WITH_MASK_BEFORE_LSTM = 'mask_ignore_before_lstm'
     TOKEN_WISE_AVERAGE_BEFORE_CRF = 'average_before_crf'
@@ -162,53 +142,22 @@ class CRFForBERT(nn.Module):
         self.crf = MarginalCRF(num_labels)
         self.strategy = junction_strategy
 
-    def forward(self, seq_repr: Tensor, labels: Optional[LongTensor] = None, label_mask: Optional[Tensor] = None,
-                self_training: bool = False, use_kldiv_loss: bool = False):
+    def forward(self, seq_repr: Tensor, labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
+                token_mask: Optional[BoolTensor] = None, self_training: bool = False, use_kldiv_loss: bool = False):
         """Returns (loss), marginal tag distribution, label mask
 
         loss is returned only when labels are given
         label_mask is returned because it might change"""
 
-        def apply_mask(sub_tokens_repr: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
-            device = sub_tokens_repr.device
-            batch_size, seq_len, num_features = sub_tokens_repr.shape
-
-            # apply mask to sub tokens
-            masked_seqs = [seq[seq_mask > 0] for seq, seq_mask in zip(sub_tokens_repr, mask)]
-            assert len(masked_seqs) == batch_size
-
-            # pad sequences to equal length
-            max_len = max(len(seq) for seq in masked_seqs)
-            add_lens = [max_len - len(seq) for seq in masked_seqs]
-            pad_tensor = torch.zeros(num_features, device=device).view(1, num_features)
-
-            padded_seqs = [torch.cat([seq] + [pad_tensor] * add_len, dim=0) for seq, add_len in zip(masked_seqs, add_lens)]
-            tokens_repr = torch.stack(padded_seqs)
-            assert tokens_repr.shape == (batch_size, max_len, num_features)
-
-            # create new mask based on padded sequence
-            batch_size, seq_len, num_features = tokens_repr.shape
-
-            def create_mask(padding: int) -> Tensor:
-                new_mask = torch.ones(seq_len, device=device)
-                if padding > 0:
-                    new_mask[-padding:] = 0
-
-                return new_mask
-
-            new_label_mask = torch.stack([create_mask(add_len) for add_len in add_lens])
-            assert new_label_mask.shape == (batch_size, max_len)
-
-            return tokens_repr, new_label_mask
-
-        if self.strategy == JunctionStrategy.IGNORE_WITH_MASK or self.strategy == JunctionStrategy.FILL_WITH_I:
-            pass
-        elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
+        if self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
             if self.lstm is None:
                 raise JunctionError(f'Cannot apply strategy {self.strategy.value} with no LSTM layer!')
 
             # apply mask to BERT output
-            seq_repr, label_mask = apply_mask(seq_repr, label_mask)
+            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
+            if label_mask is not None:
+                assert (new_label_mask == label_mask).all()
+
             seq_repr = self.dropout(seq_repr)
             seq_repr, _ = self.lstm(seq_repr)
         elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
@@ -217,8 +166,12 @@ class CRFForBERT(nn.Module):
                 seq_repr, _ = self.lstm(seq_repr)
 
             # apply mask to LSTM output
-            seq_repr, label_mask = apply_mask(seq_repr, label_mask)
+            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
+            if label_mask is not None:
+                assert (new_label_mask == label_mask).all()
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
+            raise NotImplementedError  # TODO
+        elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_LSTM:
             raise NotImplementedError  # TODO
         else:
             raise NotImplementedError
@@ -228,7 +181,7 @@ class CRFForBERT(nn.Module):
 
         marginal_labels = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
 
-        outputs = marginal_labels, label_mask
+        outputs = (marginal_labels,)
 
         if labels is not None:
             if labels.shape != marginal_labels.shape:
@@ -242,11 +195,11 @@ class CRFForBERT(nn.Module):
                 raveled_mask = (label_mask.contiguous().view(-1) > 0)
                 loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
             else:
-                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=(label_mask > 0))
+                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask)
 
             outputs = (loss,) + outputs
 
-        return outputs  # (loss), scores, label_mask
+        return outputs  # (loss), scores
 
 
 class RobertaCRFForTokenClassification(BertPreTrainedModel):
@@ -278,7 +231,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK,
+    def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF,
                  add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -305,8 +258,8 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
 
         final_embedding = outputs[0]
         head_outputs = self.head(final_embedding, labels=labels, label_mask=label_mask, self_training=self_training,
-                                 use_kldiv_loss=use_kldiv_loss)  # (loss), scores, label_mask
+                                 use_kldiv_loss=use_kldiv_loss)  # (loss), scores
 
         outputs = head_outputs + (final_embedding,) + outputs[2:]
 
-        return outputs  # (loss), scores, label_mask, final_embedding, (hidden_states), (attentions)
+        return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)

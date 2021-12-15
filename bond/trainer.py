@@ -8,7 +8,6 @@ from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict
-from bond.model import JunctionStrategy
 from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency
 
 try:
@@ -18,10 +17,9 @@ except ImportError:
 
 
 def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer) -> Scores:
-    eval_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length,
-                                junction_strategy=JunctionStrategy(args.junction_strategy))
+    eval_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
     eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.batch_size)
+    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.batch_size, collate_fn=eval_dataset.collate_fn)
 
     eval_loss = 0.0
     nb_eval_steps = 0
@@ -32,20 +30,21 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
     for batch in tqdm(eval_dataloader, desc=f"Evaluating on {dataset_type.value} dataset", leave=False):
         batch = tuple(t.to(args.device) for t in batch)
         with torch.no_grad():
-            inputs = {"input_ids": batch[0], "labels": batch[1], 'label_mask': batch[2], "attention_mask": batch[3]}
+            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
+                      "labels": labels, 'label_mask': label_mask}
             outputs = model(**inputs)
 
-            tmp_eval_loss, logits, label_mask = outputs[:3]
+            tmp_eval_loss, logits = outputs[:2]
             eval_loss += tmp_eval_loss.item()
 
         nb_eval_steps += 1
 
         batch_raveled_logits = torch.cat(list(logits.detach().cpu()), dim=0)
-        batch_raveled_input_label_mask = torch.cat(list(inputs['label_mask'].cpu()), dim=0)
-        batch_raveled_output_label_mask = torch.cat(list(label_mask.cpu()), dim=0)
-        batch_raveled_true_labels = torch.cat(list(inputs['labels'].cpu()), dim=0)
-        batch_predicted_labels = torch.argmax(batch_raveled_logits, dim=-1).masked_select(batch_raveled_output_label_mask > 0)
-        batch_true_labels = batch_raveled_true_labels.masked_select(batch_raveled_input_label_mask > 0)
+        batch_raveled_label_mask = torch.cat(list(label_mask.cpu()), dim=0)
+        batch_raveled_true_labels = torch.cat(list(labels.cpu()), dim=0)
+        batch_predicted_labels = torch.argmax(batch_raveled_logits, dim=-1).masked_select(batch_raveled_label_mask)
+        batch_true_labels = batch_raveled_true_labels.masked_select(batch_raveled_label_mask)
 
         assert len(batch_predicted_labels) == len(batch_true_labels)
 
@@ -62,11 +61,10 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
 
-    train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length,
-                                 junction_strategy=JunctionStrategy(args.junction_strategy))
+    train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length)
 
     train_sampler = RandomSampler(train_dataset)
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
 
     if args.steps_per_epoch == -1 and args.gradient_accumulation_steps == -1:
         raise ValueError('Cannot deduce number of steps per epoch! Set gradient_accumulation_steps or steps_per_epoch!')
@@ -117,7 +115,9 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             global_batch += 1
 
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "labels": batch[1], "label_mask": batch[2], "attention_mask": batch[3]}
+            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
+                      "labels": labels, 'label_mask': label_mask}
 
             model.train()
             outputs = model(**inputs, self_training=False)
@@ -169,19 +169,21 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             batch = tuple(t.to(args.device) for t in batch)
 
             # Using current teacher to update the label
-            inputs = {"input_ids": batch[0], "label_mask": batch[2], "attention_mask": batch[3]}
+            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask}
             with torch.no_grad():
                 outputs = self_training_teacher_model(**inputs)
 
-            pred_labels, new_mask = outputs[0], outputs[1]
+            predictions = outputs[0]
             if args.correct_frequency:
-                pred_labels = soft_frequency(logits=pred_labels, power=2, probs=self_training_teacher_model.returns_probs)
+                pred_labels = soft_frequency(logits=predictions, power=2, probs=self_training_teacher_model.returns_probs)
+            else:
+                pred_labels = predictions  # TODO: will fail on model that does not return probabilities
 
             _threshold = args.label_keep_threshold  # TODO: keep entities with respect to entropy?
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
 
-            inputs = {"input_ids": batch[0], "labels": pred_labels, "label_mask": (new_mask > 0) & teacher_mask,
-                      "attention_mask": batch[3]}
+            inputs = {**inputs, **{"labels": pred_labels, "label_mask": label_mask & teacher_mask}}
 
             model.train()
             outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
