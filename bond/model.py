@@ -215,6 +215,7 @@ class CRFForBERT(nn.Module):
             if self.lstm is not None:
                 seq_repr = self.dropout(seq_repr)
                 seq_repr, _ = self.lstm(seq_repr)
+
             # apply mask to LSTM output
             seq_repr, label_mask = apply_mask(seq_repr, label_mask)
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
