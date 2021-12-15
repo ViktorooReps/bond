@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import List
 
 import torch
+from torch import softmax
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
@@ -178,7 +179,10 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             if args.correct_frequency:
                 pred_labels = soft_frequency(logits=predictions, power=2, probs=self_training_teacher_model.returns_probs)
             else:
-                pred_labels = predictions  # TODO: will fail on model that does not return probabilities
+                if self_training_teacher_model.returns_probs:
+                    pred_labels = predictions
+                else:
+                    pred_labels = softmax(predictions, dim=-1)
 
             _threshold = args.label_keep_threshold  # TODO: keep entities with respect to entropy?
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)

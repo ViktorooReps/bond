@@ -192,7 +192,7 @@ class CRFForBERT(nn.Module):
                 kld_loss = KLDivLoss()
                 raveled_marginal_labels = marginal_labels.contiguous().view(-1, self.num_labels)
                 raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
-                raveled_mask = (label_mask.contiguous().view(-1) > 0)
+                raveled_mask = label_mask.contiguous().view(-1)
                 loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
             else:
                 loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask)
