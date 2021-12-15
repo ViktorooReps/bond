@@ -121,7 +121,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
 
             model.train()
             outputs = model(**inputs, self_training=False)
-            loss, logits, final_embeds = outputs[0], outputs[1], outputs[2]  # model outputs are always tuple in pytorch-transformers
+            loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
             loss.backward()
@@ -173,18 +173,19 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             with torch.no_grad():
                 outputs = self_training_teacher_model(**inputs)
 
-            pred_labels = outputs[0]
+            pred_labels, new_mask = outputs[0], outputs[1]
             if args.correct_frequency:
                 pred_labels = soft_frequency(logits=pred_labels, power=2, probs=self_training_teacher_model.returns_probs)
 
             _threshold = args.label_keep_threshold  # TODO: keep entities with respect to entropy?
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
 
-            inputs = {"input_ids": batch[0], "labels": pred_labels, "label_mask": batch[2] | teacher_mask,  "attention_mask": batch[3]}
+            inputs = {"input_ids": batch[0], "labels": pred_labels, "label_mask": (new_mask > 0) & teacher_mask,
+                      "attention_mask": batch[3]}
 
             model.train()
             outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
-            loss, logits, final_embeds = outputs[0], outputs[1], outputs[2]  # model outputs are always tuple in pytorch-transformers
+            loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
 
             if gradient_accumulation_steps > 1:
                 loss = loss / gradient_accumulation_steps
