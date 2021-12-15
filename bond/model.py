@@ -75,9 +75,7 @@ class RobertaForTokenClassificationOriginal(BertPreTrainedModel):
 
         final_embedding = outputs[0]
         masked_sequence, new_label_mask = apply_mask(final_embedding, token_mask)
-        if label_mask is not None:
-            assert (new_label_mask == label_mask).all()
-        else:
+        if label_mask is None:
             label_mask = new_label_mask
 
         sequence_output = self.dropout(masked_sequence)
@@ -150,14 +148,13 @@ class CRFForBERT(nn.Module):
         loss is returned only when labels are given
         label_mask is returned because it might change"""
 
+        new_label_mask = None
         if self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
             if self.lstm is None:
                 raise JunctionError(f'Cannot apply strategy {self.strategy.value} with no LSTM layer!')
 
             # apply mask to BERT output
             seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-            if label_mask is not None:
-                assert (new_label_mask == label_mask).all()
 
             seq_repr = self.dropout(seq_repr)
             seq_repr, _ = self.lstm(seq_repr)
@@ -168,14 +165,15 @@ class CRFForBERT(nn.Module):
 
             # apply mask to LSTM output
             seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-            if label_mask is not None:
-                assert (new_label_mask == label_mask).all()
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
             raise NotImplementedError  # TODO
         elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_LSTM:
             raise NotImplementedError  # TODO
         else:
             ValueError(f'Junction type {self.strategy} is not permitted for {self}!')
+
+        if label_mask is None:
+            label_mask = new_label_mask
 
         seq_repr = self.dropout(seq_repr)
         label_scores = self.hidden2labels(seq_repr)
