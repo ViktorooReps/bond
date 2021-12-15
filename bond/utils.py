@@ -156,7 +156,7 @@ def apply_mask(sub_tokens_repr: Tensor, mask: BoolTensor) -> Tuple[Tensor, BoolT
     add_lens = [max_len - len(seq) for seq in masked_seqs]
 
     def pad_seq(sequence: Tensor, added_len: int) -> Tensor:
-        return pad(sequence, (0, added_len, 0, 0), value=0)
+        return pad(sequence, (0, 0, 0, added_len), value=0)
 
     padded_seqs = [pad_seq(seq, add_len) for seq, add_len in zip(masked_seqs, add_lens)]
     tokens_repr = torch.stack(padded_seqs)
