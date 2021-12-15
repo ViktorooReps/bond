@@ -1,9 +1,9 @@
 [
   {
     "script": "train.py",
-    "save_output": "logs/baseline-paper-bert-lr2-lrd-95/script_output.log",
+    "save_output": "logs/baseline-paper-bert-lr2-lrd-90/script_output.log",
     "args": [
-      "--experiment_name=baseline-paper-bert-lr2-lrd-95",
+      "--experiment_name=baseline-paper-bert-lr2-lrd-90",
       "--dataset=conll03",
       "--model_type=roberta-original",
       "--model_name=roberta-base",
