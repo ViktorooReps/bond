@@ -141,8 +141,9 @@ class CRFForBERT(nn.Module):
         self.crf = MarginalCRF(num_labels)
         self.strategy = junction_strategy
 
-    def forward(self, seq_repr: Tensor, labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
-                token_mask: Optional[BoolTensor] = None, self_training: bool = False, use_kldiv_loss: bool = False):
+    def forward(self, seq_repr: Tensor, token_mask: Optional[BoolTensor] = None,
+                labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
+                self_training: bool = False, use_kldiv_loss: bool = False):
         """Returns (loss), marginal tag distribution, label mask
 
         loss is returned only when labels are given
@@ -245,7 +246,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     def returns_probs(self) -> bool:
         return True
 
-    def forward(self, input_ids: Tensor, attention_mask: Optional[Tensor] = None, token_type_ids: Optional[Tensor] = None,
+    def forward(self, input_ids: Tensor, token_mask: BoolTensor, attention_mask: Optional[Tensor] = None, token_type_ids: Optional[Tensor] = None,
                 position_ids: Optional[Tensor] = None, head_mask: Optional[Tensor] = None, inputs_embeds: Optional[Tensor] = None,
                 labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None, self_training: bool = False,
                 use_kldiv_loss: bool = False):
@@ -256,8 +257,9 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         # outputs: final_embedding, pooler_output, (hidden_states), (attentions)
 
         final_embedding = outputs[0]
-        head_outputs = self.head(final_embedding, labels=labels, label_mask=label_mask, self_training=self_training,
-                                 use_kldiv_loss=use_kldiv_loss)  # (loss), scores
+        head_outputs = self.head(final_embedding, token_mask=token_mask,
+                                 labels=labels, label_mask=label_mask,
+                                 self_training=self_training, use_kldiv_loss=use_kldiv_loss)  # (loss), scores
 
         outputs = head_outputs + (final_embedding,) + outputs[2:]
 
