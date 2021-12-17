@@ -74,12 +74,22 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
     else:
         gradient_accumulation_steps = args.gradient_accumulation_steps
 
-    max_steps_per_epoch = len(train_dataloader) // gradient_accumulation_steps
+    min_steps_per_epoch = len(train_dataloader) // gradient_accumulation_steps
+    max_steps_per_epoch = min_steps_per_epoch + 1
 
     st_epochs = args.self_training_epochs
-    ner_epochs = args.ner_fit_epochs if args.ner_fit_steps < 0 else int(math.ceil(args.ner_fit_steps / max_steps_per_epoch))
+    st_steps = st_epochs * max_steps_per_epoch
 
-    model, optimizer, scheduler = initialize_roberta(args, model)
+    if args.ner_fit_steps < 0:
+        ner_epochs = args.ner_fit_epochs
+        ner_steps = ner_epochs * max_steps_per_epoch
+    else:
+        ner_epochs = int(math.ceil(args.ner_fit_steps / min_steps_per_epoch))
+        ner_steps = args.ner_fit_steps
+
+    total_steps = ner_steps + st_steps
+
+    model, optimizer, scheduler = initialize_roberta(args, model, total_steps)
 
     # Train!
 
@@ -203,6 +213,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 optimizer.step()
+                scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
                 global_step += 1
 

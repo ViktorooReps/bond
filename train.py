@@ -103,6 +103,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Label keeping threshold for self training stage')
     parser.add_argument("--lr_st_decay", default=1.0, type=float,
                         help="Learning rate decay between stages for self training stage")
+    parser.add_argument('--use_linear_scheduler', action='store_true',
+                        help='Use linear scheduler from transformers')
     parser.add_argument('--correct_frequency', action='store_true',
                         help='Do soft label frequency correction before choosing labels with threshold')
     parser.add_argument('--use_kldiv_loss', action='store_true',
