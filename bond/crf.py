@@ -253,14 +253,28 @@ class MarginalCRF(BaseCRF):
     def forward(self,
                 emissions: torch.Tensor,
                 marginal_tags: torch.LongTensor,
-                mask: Optional[torch.ByteTensor] = None) -> torch.Tensor:
+                mask: Optional[torch.ByteTensor] = None,
+                reduction: str = 'sum') -> torch.Tensor:
+
+        if reduction not in {'none', 'sum', 'mean', 'token_mean'}:
+            raise ValueError(f'Invalid reduction: {reduction}!')
+
         batch_size, sequence_length, _ = emissions.shape
         if mask is None:
             mask = torch.ones([batch_size, sequence_length], dtype=torch.uint8)
 
         gold_score = self._numerator_score(emissions, marginal_tags, mask)
         forward_score = self._denominator_score(emissions, mask)
-        return torch.sum(forward_score - gold_score)
+        llh = gold_score - forward_score
+
+        if reduction == 'none':
+            return llh
+        if reduction == 'sum':
+            return llh.sum()
+        if reduction == 'mean':
+            return llh.mean()
+        assert reduction == 'token_mean'
+        return llh.sum() / mask.float().sum()
 
     def _denominator_score(self,
                            emissions: torch.Tensor,

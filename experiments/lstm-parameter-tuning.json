@@ -1,0 +1,33 @@
+[
+  {
+    "script": "train.py",
+    "save_output": "logs/crf-lstm-one-layer-128-new-loss/script_output.log",
+    "args": [
+      "--experiment_name=crf-lstm-one-layer-128-new-loss",
+      "--dataset=conll03",
+      "--model_type=roberta-crf",
+      "--model_name=roberta-base",
+      "--gradient_accumulation_steps=2",
+      "--add_lstm",
+      "--lstm_hidden_size=64",
+      "--lstm_num_layers=1",
+      "--head_learning_rate=1e-03",
+      "--bert_learning_rate=1e-05",
+      "--lr_decrease=0.9",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--warmup_proportion=0.1",
+      "--ner_fit_epochs=2",
+      "--self_training_epochs=10",
+      "--label_keep_threshold=0.9",
+      "--junction_strategy=mask_ignore_before_lstm",
+      "--use_linear_scheduler",
+      "--lr_st_decay=1.0",
+      "--use_kldiv_loss",
+      "--correct_frequency",
+      "--seed=42"
+    ]
+  }
+]

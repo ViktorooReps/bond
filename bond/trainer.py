@@ -89,7 +89,7 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
 
     total_steps = ner_steps + st_steps
 
-    model, optimizer, scheduler = initialize_roberta(args, model, total_steps)
+    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=args.warmup_proportion * max_steps_per_epoch)
 
     # Train!
 

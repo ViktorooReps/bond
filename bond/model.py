@@ -1,6 +1,7 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
+import torch
 from torch import FloatTensor, LongTensor, Tensor, BoolTensor
 from torch.nn.functional import one_hot
 from transformers import RobertaModel, BertPreTrainedModel, RobertaConfig
@@ -111,6 +112,7 @@ def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     return one_hot(labels, num_labels)
 
 
+# TODO: add CNN for extracting features from subwords
 class JunctionStrategy(Enum):
     NONE = 'none'
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
@@ -121,6 +123,44 @@ class JunctionStrategy(Enum):
 
 class JunctionError(Exception):
     pass
+
+
+class PoolingStrategy(Enum):
+    LAST = 'last'
+    SUM = 'sum'
+    CONCAT = 'concat'
+
+
+def sum_last_4_layers(sequence_outputs: Tuple[torch.Tensor]) -> torch.Tensor:
+    """Sums the last 4 hidden representations of a sequence output of BERT.
+    Args:
+    -----
+    sequence_output: Tuple of tensors of shape (batch, seq_length, hidden_size).
+        For BERT base, the Tuple has length 13.
+    Returns:
+    --------
+    summed_layers: Tensor of shape (batch, seq_length, hidden_size)
+    """
+    last_layers = sequence_outputs[-4:]
+    return torch.stack(last_layers, dim=0).sum(dim=0)
+
+
+def get_last_layer(sequence_outputs: Tuple[torch.Tensor]) -> torch.Tensor:
+    """Returns the last tensor of a list of tensors."""
+    return sequence_outputs[-1]
+
+
+def concat_last_4_layers(sequence_outputs: Tuple[torch.Tensor]) -> torch.Tensor:
+    """Concatenate the last 4 tensors of a tuple of tensors."""
+    last_layers = sequence_outputs[-4:]
+    return torch.cat(last_layers, dim=-1)
+
+
+POOLERS = {
+    PoolingStrategy.SUM: sum_last_4_layers,
+    PoolingStrategy.LAST: get_last_layer,
+    PoolingStrategy.CONCAT: concat_last_4_layers,
+}
 
 
 class CRFForBERT(nn.Module):
@@ -189,13 +229,13 @@ class CRFForBERT(nn.Module):
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
             if self_training and use_kldiv_loss:
-                kld_loss = KLDivLoss()
+                kld_loss = KLDivLoss(reduction='mean')
                 raveled_marginal_labels = marginal_labels.contiguous().view(-1, self.num_labels)
                 raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
                 raveled_mask = label_mask.contiguous().view(-1)
                 loss = kld_loss(raveled_marginal_labels[raveled_mask], raveled_gold_labels[raveled_mask])
             else:
-                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask)
+                loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask, reduction='token_mean')
 
             outputs = (loss,) + outputs
 
@@ -232,32 +272,57 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     base_model_prefix = "roberta"
 
     def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF,
+                 freeze_bert: bool = False, pooler: PoolingStrategy = PoolingStrategy.LAST,
                  add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128):
+
         super().__init__(config)
         self.num_labels = config.num_labels
 
+        hidden_size = config.hidden_size if pooler != PoolingStrategy.CONCAT else 4 * config.hidden_size
+
         self.roberta = RobertaModel(config)
-        self.head = CRFForBERT(num_labels=self.num_labels, hidden_size=config.hidden_size, dropout_prob=config.hidden_dropout_prob,
+        self.frozen_bert = freeze_bert
+        self.pooler = pooler
+        self.head = CRFForBERT(num_labels=self.num_labels, hidden_size=hidden_size, dropout_prob=config.hidden_dropout_prob,
                                junction_strategy=junction_strategy, add_lstm=add_lstm, lstm_hidden=lstm_hidden, lstm_layers=lstm_layers)
 
+        if self.frozen_bert:
+            self.freeze_bert()
+
         self.init_weights()
+
+    def freeze_bert(self):
+        """Freeze all BERT parameters. Only the classifier weights will be
+        updated."""
+        for p in self.roberta.parameters():
+            p.requires_grad = False
 
     @property
     def returns_probs(self) -> bool:
         return True
 
-    def forward(self, input_ids: Tensor, token_mask: BoolTensor, attention_mask: Optional[Tensor] = None, token_type_ids: Optional[Tensor] = None,
-                position_ids: Optional[Tensor] = None, head_mask: Optional[Tensor] = None, inputs_embeds: Optional[Tensor] = None,
-                labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None, self_training: bool = False,
-                use_kldiv_loss: bool = False):
+    def forward(self, input_ids: Tensor, token_mask: BoolTensor, attention_mask: Optional[Tensor] = None,
+                token_type_ids: Optional[Tensor] = None, position_ids: Optional[Tensor] = None, head_mask: Optional[Tensor] = None,
+                inputs_embeds: Optional[Tensor] = None, labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None,
+                self_training: bool = False, use_kldiv_loss: bool = False):
 
-        outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.roberta(input_ids, attention_mask=attention_mask,
-                                                                             token_type_ids=token_type_ids, position_ids=position_ids,
-                                                                             head_mask=head_mask, inputs_embeds=inputs_embeds)
+        roberta_inputs = dict(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, position_ids=position_ids,
+                              head_mask=head_mask, inputs_embeds=inputs_embeds)
+
+        outputs: BaseModelOutputWithPoolingAndCrossAttentions
+
+        if self.frozen_bert:
+            with torch.no_grad():
+                outputs = self.roberta(**roberta_inputs)
+        else:
+            outputs = self.roberta(**roberta_inputs)
+
         # outputs: final_embedding, pooler_output, (hidden_states), (attentions)
 
-        final_embedding = outputs[0]
-        head_outputs = self.head(final_embedding, token_mask=token_mask,
+        final_embedding = outputs['last_hidden_state']
+        all_layers_sequence_outputs = outputs['hidden_states']
+        pooled_embedding = POOLERS[self.pooler](all_layers_sequence_outputs)
+        head_outputs = self.head(pooled_embedding, token_mask=token_mask,
                                  labels=labels, label_mask=label_mask,
                                  self_training=self_training, use_kldiv_loss=use_kldiv_loss)  # (loss), scores
 

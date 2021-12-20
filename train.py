@@ -9,7 +9,7 @@ import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
 
 from bond.data import DatasetName, DatasetType, load_tags_dict
-from bond.model import JunctionStrategy, RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
+from bond.model import JunctionStrategy, PoolingStrategy, RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
 from bond.trainer import evaluate, train
 from bond.utils import Scores, set_seed
 
@@ -65,6 +65,11 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of batches in each step.')
     parser.add_argument("--bert_learning_rate", default=1e-5, type=float,
                         help="The initial learning rate for RoBERTa.")
+    parser.add_argument('--freeze_bert', action='store_true',
+                        help='Do not compute gradients for RoBERTa.')
+    parser.add_argument('--pooler', default='last',
+                        help='Pooling strategy for extracting BERT encoded features from last BERT layers. '
+                             'One of ' + ', '.join(pooler.value for pooler in PoolingStrategy))
     parser.add_argument('--head_learning_rate', default=1e-3, type=float,
                         help='The initial learning rate for model\' head: LSTM-CRF or CRF')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
@@ -93,8 +98,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="number of epochs for NER fitting stage")
     parser.add_argument('--ner_fit_steps', default=-1, type=int,
                         help='Number of NER fitting steps. -1 for using epochs')
-    parser.add_argument("--warmup_steps", default=200, type=int,
-                        help="Linear warmup over warmup_steps.")
+    parser.add_argument("--warmup_proportion", default=0.1, type=float,
+                        help='Proportion of first NER epoch to use for warmup.')
 
     # Self-training parameters
     parser.add_argument('--self_training_epochs', type=int, default=50,
@@ -149,12 +154,13 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     # Load pretrained model and tokenizer
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    config = config_class.from_pretrained(args.model_name, num_labels=num_labels)  # TODO: do caching
+    config = config_class.from_pretrained(args.model_name, num_labels=num_labels, output_hidden_states=True)  # TODO: do caching
     tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
 
     # Training
-    model = model_class.from_pretrained(args.model_name, config=config, junction_strategy=JunctionStrategy(args.junction_strategy),
-                                        add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers)
+    model = model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert, pooler=PoolingStrategy(args.pooler),
+                                        junction_strategy=JunctionStrategy(args.junction_strategy), add_lstm=args.add_lstm,
+                                        lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers)
     model, global_step, tr_loss = train(args, model, dataset, tokenizer, tb_writer)
 
     # TODO: save model

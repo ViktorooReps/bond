@@ -61,7 +61,8 @@ def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags
     return {'f1': f1, 'precision': precision, 'recall': recall}
 
 
-def initialize_roberta(args, model: PreTrainedModel, total_steps: int) -> Tuple[PreTrainedModel, Optimizer, BaseScheduler]:
+def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
+                       warmup_steps: int) -> Tuple[PreTrainedModel, Optimizer, BaseScheduler]:
     """Only compatible with RoBERTa-base for now"""
     model.to(args.device)
 
@@ -123,9 +124,9 @@ def initialize_roberta(args, model: PreTrainedModel, total_steps: int) -> Tuple[
 
     optimizer = AdamW(opt_parameters, eps=args.adam_epsilon, betas=(args.adam_beta1, args.adam_beta2))
     if args.use_linear_scheduler:
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
     else:
-        scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps)
+        scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps)
 
     model.zero_grad()
     return model, optimizer, scheduler

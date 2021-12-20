@@ -60,6 +60,8 @@ def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
 
 Example = Tuple[LongTensor, BoolTensor, LongTensor]  # (token ids, token mask, labels)
 BertExample = Tuple[LongTensor, BoolTensor, BoolTensor, LongTensor, BoolTensor]  # (tok ids, tok mask, attention mask, labels, label mask)
+# DistantExample = Tuple[...]  # like BertExample but with gold_mask? - shows gold annotations
+# during training set to 1.0 prob of gold labels
 
 
 def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExample:
@@ -83,7 +85,7 @@ def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExamp
         pad_sequence(label_masks, batch_first=True, padding_value=0).bool()
 
 
-class SubTokenDataset(Dataset):
+class SubTokenDataset(Dataset):  # need to somehow implement gold labels
 
     def __init__(self, examples: Iterable[Example], token_pad: int, label_pad: int = PAD_LABEL_ID):
         """
@@ -104,8 +106,8 @@ class SubTokenDataset(Dataset):
         return self._examples[idx]
 
 
-def load_transformed_dataset(dataset_name: DatasetName, target_recall: float, target_precision: Union[str, float] = 'distant'):
-    pass
+def load_transformed_dataset(dataset_name: DatasetName, target_recall: float, target_precision: Union[str, float] = 'distant') -> SubTokenDataset:
+    pass    # merge train and distant datasets to achieve rarget recall
 
 
 def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
