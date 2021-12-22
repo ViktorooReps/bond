@@ -313,6 +313,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
 
         if self.frozen_bert:
             with torch.no_grad():
+                self.roberta.eval()
                 outputs = self.roberta(**roberta_inputs)
         else:
             outputs = self.roberta(**roberta_inputs)

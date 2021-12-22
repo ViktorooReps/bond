@@ -265,7 +265,7 @@ class MarginalCRF(BaseCRF):
 
         gold_score = self._numerator_score(emissions, marginal_tags, mask)
         forward_score = self._denominator_score(emissions, mask)
-        llh = gold_score - forward_score
+        llh = forward_score - gold_score
 
         if reduction == 'none':
             return llh

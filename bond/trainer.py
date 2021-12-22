@@ -88,8 +88,10 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
         ner_steps = args.ner_fit_steps
 
     total_steps = ner_steps + st_steps
+    warmup_steps = int(args.warmup_proportion * max_steps_per_epoch)
+    warmup_batches = warmup_steps * gradient_accumulation_steps
 
-    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=args.warmup_proportion * max_steps_per_epoch)
+    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=warmup_steps)
 
     # Train!
 
@@ -107,6 +109,33 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrai
             tb_writer.add_scalar(f"lr_{group.get('name', f'group{group_idx}')}", group['lr'], global_step)
 
     # Fitting BERT to NER task
+
+    # warmup epoch
+    epoch_iterator = tqdm(train_dataloader, desc=f'Warmup epoch!', total=warmup_batches)
+    for batch_idx, batch in enumerate(epoch_iterator):
+        if batch_idx >= warmup_batches:
+            epoch_iterator.close()
+            continue
+
+        batch = tuple(t.to(args.device) for t in batch)
+        token_ids, token_mask, attention_mask, labels, label_mask = batch
+        inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
+                  "labels": labels, 'label_mask': label_mask}
+
+        model.train()
+        outputs = model(**inputs, self_training=False)
+        loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
+        loss = loss / gradient_accumulation_steps
+
+        loss.backward()
+
+        if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+
+            optimizer.step()
+            scheduler.step()  # Update learning rate schedule
+            model.zero_grad()
+
     for ner_fit_epoch in range(ner_epochs):
 
         if args.ner_fit_steps > 0:

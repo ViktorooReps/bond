@@ -70,7 +70,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument('--pooler', default='last',
                         help='Pooling strategy for extracting BERT encoded features from last BERT layers. '
                              'One of ' + ', '.join(pooler.value for pooler in PoolingStrategy))
-    parser.add_argument('--head_learning_rate', default=1e-3, type=float,
+    parser.add_argument('--head_learning_rate', default=1e-4, type=float,
                         help='The initial learning rate for model\' head: LSTM-CRF or CRF')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
                         help="LR decrease with layer depth")
