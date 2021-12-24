@@ -1,9 +1,9 @@
 import random
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
-from torch import Tensor, BoolTensor
+from torch import LongTensor, Tensor, BoolTensor
 from torch.ao.sparsity import BaseScheduler
 from torch.nn import Softmax
 from torch.nn.functional import pad
@@ -182,3 +182,27 @@ def apply_mask(sub_tokens_repr: Tensor, mask: BoolTensor) -> Tuple[Tensor, BoolT
     assert new_label_mask.shape == (batch_size, max_len)
 
     return tokens_repr, new_label_mask.bool()
+
+
+def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: BoolTensor) -> Tensor:
+    batch_size, seq_len, num_features = seq_repr.shape
+
+    # extract subword indices
+    word_start_indices: List[LongTensor] = [torch.arange(seq_len)[mask] for mask in token_mask]
+    word_end_indices: List[LongTensor] = [torch.roll(ws_inds, 1).long() for ws_inds in word_start_indices]
+    for we, seq_len in zip(word_end_indices, seq_lens):
+        we[-1] = seq_len
+
+    # pad subwords to equal length
+    max_subword_count = max(max(batch_we - batch_ws - 1) for batch_ws, batch_we in zip(word_start_indices, word_end_indices))
+
+    def get_subword_repr(seq: Tensor, word_start: int, word_end: int) -> Tensor:
+        added_len = max_subword_count - (word_end - word_start - 1)
+        return pad(seq[word_start + 1: word_end].view(-1, num_features), (0, 0, 0, added_len), value=0)
+
+    subword_reprs: List[Tensor] = []
+    for ws_inds, we_inds, batch_seq in zip(word_start_indices, word_end_indices, seq_repr):
+        batch_subwords = [get_subword_repr(batch_seq, ws, we) for ws, we, in zip(ws_inds, we_inds)]
+        subword_reprs.append(torch.stack(batch_subwords))
+
+    return torch.stack(subword_reprs)

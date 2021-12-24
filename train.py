@@ -70,6 +70,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument('--pooler', default='last',
                         help='Pooling strategy for extracting BERT encoded features from last BERT layers. '
                              'One of ' + ', '.join(pooler.value for pooler in PoolingStrategy))
+    parser.add_argument('--dropout', default=0.1, type=float,
+                        help='Dropout probability for BERT and LSTM head.')
     parser.add_argument('--head_learning_rate', default=1e-4, type=float,
                         help='The initial learning rate for model\' head: LSTM-CRF or CRF')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
@@ -86,6 +88,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Max gradient norm for gradient clipping.")
     parser.add_argument('--junction_strategy', default='none', type=str,
                         help='One of ' + ', '.join(junction.value for junction in JunctionStrategy))
+    parser.add_argument('--subword_repr_size', default=0, type=int,
+                        help='Size of subword representations collected from all subwords except the first one.')
     parser.add_argument('--add_lstm', action='store_true',
                         help='Add LSTM layer between BERT and CRF.')
     parser.add_argument('--lstm_hidden_size', default=128, type=int,
@@ -154,7 +158,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     # Load pretrained model and tokenizer
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    config = config_class.from_pretrained(args.model_name, num_labels=num_labels, output_hidden_states=True)  # TODO: do caching
+    config = config_class.from_pretrained(args.model_name, num_labels=num_labels, output_hidden_states=True,
+                                          hidden_dropout_prob=args.dropout, attention_probs_dropout_prob=args.dropout)  # TODO: do caching
     tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
 
     # Training

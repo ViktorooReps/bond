@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 import torch
 from torch import FloatTensor, LongTensor, Tensor, BoolTensor
@@ -10,7 +10,7 @@ from torch.nn import CrossEntropyLoss, KLDivLoss
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from bond.crf import MarginalCRF
-from bond.utils import apply_mask
+from bond.utils import apply_mask, extract_subwords
 
 ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP = {
     "roberta-base": "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-base-pytorch_model.bin",
@@ -112,13 +112,10 @@ def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     return one_hot(labels, num_labels)
 
 
-# TODO: add CNN for extracting features from subwords
 class JunctionStrategy(Enum):
     NONE = 'none'
     IGNORE_WITH_MASK_BEFORE_CRF = 'mask_ignore_before_crf'
     IGNORE_WITH_MASK_BEFORE_LSTM = 'mask_ignore_before_lstm'
-    TOKEN_WISE_AVERAGE_BEFORE_CRF = 'average_before_crf'
-    TOKEN_WISE_AVERAGE_BEFORE_LSTM = 'average_before_lstm'
 
 
 class JunctionError(Exception):
@@ -166,28 +163,39 @@ POOLERS = {
 class CRFForBERT(nn.Module):
     """BERT-aware MarginalCRF implementation"""
 
-    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy, add_lstm: bool = False,
-                 lstm_layers: int = 2, lstm_hidden: int = 128):
+    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy,
+                 subword_repr_size: int = 0, add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128):
         super().__init__()
+
+        self.strategy = junction_strategy
+        self.subword_repr_size = subword_repr_size
 
         self.num_labels = num_labels
         self.dropout = nn.Dropout(dropout_prob)
+
+        if self.subword_repr_size > 0:
+            self.cnn - nn.Conv2d(in_channels=1, out_channels=subword_repr_size, kernel_size=(3, hidden_size), padding=(1, 0))
+        else:
+            self.cnn = None
+
         if add_lstm:
             self.lstm = nn.LSTM(input_size=hidden_size, hidden_size=lstm_hidden, num_layers=lstm_layers, bidirectional=True,
                                 dropout=dropout_prob, batch_first=True)
         else:
             self.lstm = None
+
         self.hidden2labels = nn.Linear(hidden_size if not add_lstm else 2 * lstm_hidden, num_labels)
         self.crf = MarginalCRF(num_labels)
-        self.strategy = junction_strategy
 
-    def forward(self, seq_repr: Tensor, token_mask: Optional[BoolTensor] = None,
+    def forward(self, seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Optional[BoolTensor] = None,
                 labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
                 self_training: bool = False, use_kldiv_loss: bool = False):
         """Returns (loss), marginal tag distribution, label mask
 
         loss is returned only when labels are given
         label_mask is returned because it might change"""
+
+        seq_lens = tuple(seq_lens)
 
         new_label_mask = None
         if self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
@@ -206,12 +214,22 @@ class CRFForBERT(nn.Module):
 
             # apply mask to LSTM output
             seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-        elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_CRF:
-            raise NotImplementedError  # TODO
-        elif self.strategy == JunctionStrategy.TOKEN_WISE_AVERAGE_BEFORE_LSTM:
-            raise NotImplementedError  # TODO
         else:
             ValueError(f'Junction type {self.strategy} is not permitted for {self}!')
+
+        if self.subword_repr_size > 0:
+            # extract subwords for each entity
+            subwords_repr = extract_subwords(seq_repr, seq_lens, token_mask)
+            batch_size, seq_len, subword_count, num_features = subwords_repr.shape
+
+            assert seq_repr.shape == (batch_size, seq_len, num_features)
+
+            pooler = nn.MaxPool2d(kernel_size=(subword_count, 1))
+            subwords_repr = self.cnn(subwords_repr.view(-1, 1, subword_count, num_features))
+            subwords_repr = pooler(subwords_repr).view(batch_size, seq_len, self.subword_repr_size)
+
+            # concatenate representations
+            seq_repr = torch.cat([seq_repr, subwords_repr], dim=2)
 
         if label_mask is None:
             label_mask = new_label_mask
@@ -306,6 +324,9 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
                 inputs_embeds: Optional[Tensor] = None, labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None,
                 self_training: bool = False, use_kldiv_loss: bool = False):
 
+        batch_size, max_seq_len = input_ids.shape
+        seq_lens = [max_seq_len - mask.sum() for mask in attention_mask]
+
         roberta_inputs = dict(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, position_ids=position_ids,
                               head_mask=head_mask, inputs_embeds=inputs_embeds)
 
@@ -323,7 +344,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         final_embedding = outputs['last_hidden_state']
         all_layers_sequence_outputs = outputs['hidden_states']
         pooled_embedding = POOLERS[self.pooler](all_layers_sequence_outputs)
-        head_outputs = self.head(pooled_embedding, token_mask=token_mask,
+        head_outputs = self.head(pooled_embedding, seq_lens=seq_lens, token_mask=token_mask,
                                  labels=labels, label_mask=label_mask,
                                  self_training=self_training, use_kldiv_loss=use_kldiv_loss)  # (loss), scores
 
