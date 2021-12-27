@@ -189,9 +189,9 @@ def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Bool
 
     # extract subword indices
     word_start_indices: List[LongTensor] = [torch.arange(seq_len)[mask] for mask in token_mask]
-    word_end_indices: List[LongTensor] = [torch.roll(ws_inds, 1).long() for ws_inds in word_start_indices]
-    for we, seq_len in zip(word_end_indices, seq_lens):
-        we[-1] = seq_len
+    word_end_indices: List[LongTensor] = [torch.roll(ws_inds, -1).long() for ws_inds in word_start_indices]
+    for we, s_len in zip(word_end_indices, seq_lens):
+        we[-1] = s_len
 
     # pad subwords to equal length
     max_subword_count = max(max(batch_we - batch_ws - 1) for batch_ws, batch_we in zip(word_start_indices, word_end_indices))
@@ -205,4 +205,14 @@ def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Bool
         batch_subwords = [get_subword_repr(batch_seq, ws, we) for ws, we, in zip(ws_inds, we_inds)]
         subword_reprs.append(torch.stack(batch_subwords))
 
-    return torch.stack(subword_reprs)
+    # pad sequences to equal length
+    max_len = max(len(seq) for seq in subword_reprs)
+    add_lens = [max_len - len(seq) for seq in subword_reprs]
+
+    def pad_seq(sequence: Tensor, added_len: int) -> Tensor:
+        return pad(sequence, (0, 0, 0, 0, 0, added_len), value=0)
+
+    padded_seqs = [pad_seq(seq, add_len) for seq, add_len in zip(subword_reprs, add_lens)]
+    tokens_repr = torch.stack(padded_seqs)
+
+    return tokens_repr

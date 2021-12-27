@@ -80,7 +80,7 @@ def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExamp
 
     return pad_sequence(token_ids, batch_first=True, padding_value=pad_token).long(), \
         pad_sequence(token_masks, batch_first=True, padding_value=0).bool(), \
-        pad_sequence(attention_masks, batch_first=True, padding_value=1).bool(), \
+        pad_sequence(attention_masks, batch_first=True, padding_value=0).bool(), \
         pad_sequence(labels, batch_first=True, padding_value=pad_label).long(), \
         pad_sequence(label_masks, batch_first=True, padding_value=0).bool()
 

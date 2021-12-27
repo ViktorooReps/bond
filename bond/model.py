@@ -178,12 +178,13 @@ class CRFForBERT(nn.Module):
             self.cnn = None
 
         if add_lstm:
-            self.lstm = nn.LSTM(input_size=hidden_size, hidden_size=lstm_hidden, num_layers=lstm_layers, bidirectional=True,
-                                dropout=dropout_prob, batch_first=True)
+            self.lstm = nn.LSTM(input_size=hidden_size + self.subword_repr_size, hidden_size=lstm_hidden, num_layers=lstm_layers,
+                                bidirectional=True, dropout=dropout_prob, batch_first=True)
         else:
             self.lstm = None
 
-        self.hidden2labels = nn.Linear(hidden_size if not add_lstm else 2 * lstm_hidden, num_labels)
+        total_hidden_size = 2 * lstm_hidden if add_lstm else hidden_size + self.subword_repr_size
+        self.hidden2labels = nn.Linear(total_hidden_size, num_labels)
         self.crf = MarginalCRF(num_labels)
 
     def forward(self, seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Optional[BoolTensor] = None,
@@ -196,24 +197,24 @@ class CRFForBERT(nn.Module):
 
         seq_lens = tuple(seq_lens)
 
-        new_label_mask = None
-
-        # get first subword of each word
-        seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-
         if self.subword_repr_size > 0:
             # extract subwords for each entity
             subwords_repr = extract_subwords(seq_repr, seq_lens, token_mask)
             batch_size, seq_len, subword_count, num_features = subwords_repr.shape
 
-            assert seq_repr.shape == (batch_size, seq_len, num_features)
-
             pooler = nn.MaxPool2d(kernel_size=(subword_count, 1))
             subwords_repr = self.cnn(subwords_repr.view(-1, 1, subword_count, num_features))
             subwords_repr = pooler(subwords_repr).view(batch_size, seq_len, self.subword_repr_size)
 
+            # get first subword of each word
+            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
+            assert seq_repr.shape == (batch_size, seq_len, num_features)
+
             # concatenate representations
             seq_repr = torch.cat([seq_repr, subwords_repr], dim=2)
+        else:
+            # get first subword of each word
+            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
 
         if self.lstm is not None:
             seq_repr = self.dropout(seq_repr)
@@ -313,8 +314,7 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
                 inputs_embeds: Optional[Tensor] = None, labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None,
                 self_training: bool = False, use_kldiv_loss: bool = False):
 
-        batch_size, max_seq_len = input_ids.shape
-        seq_lens = [max_seq_len - mask.sum() for mask in attention_mask]
+        seq_lens = [mask.sum() for mask in attention_mask]
 
         roberta_inputs = dict(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, position_ids=position_ids,
                               head_mask=head_mask, inputs_embeds=inputs_embeds)
