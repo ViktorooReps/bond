@@ -46,6 +46,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Name of the experiment')
 
     # Other parameters
+    parser.add_argument("--dataset_type", default='distant', type=str,
+                        help='One of ' + ', '.join(dataset_type.value for dataset_type in DatasetType))
     parser.add_argument("--max_seq_length", default=128, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, "
                              "sequences shorter will be padded.")
@@ -70,8 +72,10 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument('--pooler', default='last',
                         help='Pooling strategy for extracting BERT encoded features from last BERT layers. '
                              'One of ' + ', '.join(pooler.value for pooler in PoolingStrategy))
-    parser.add_argument('--dropout', default=0.1, type=float,
-                        help='Dropout probability for BERT and LSTM head.')
+    parser.add_argument('--bert_dropout', default=0.1, type=float,
+                        help='Dropout probability for BERT.')
+    parser.add_argument('--lstm_dropout', default=0.5, type=float,
+                        help='Dropout probability for LSTM.')
     parser.add_argument('--head_learning_rate', default=1e-4, type=float,
                         help='The initial learning rate for model\' head: LSTM-CRF or CRF')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
@@ -86,8 +90,6 @@ def create_parser() -> argparse.ArgumentParser:
                         help="BETA2 for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm for gradient clipping.")
-    parser.add_argument('--junction_strategy', default='none', type=str,
-                        help='One of ' + ', '.join(junction.value for junction in JunctionStrategy))
     parser.add_argument('--subword_repr_size', default=0, type=int,
                         help='Size of subword representations collected from all subwords except the first one.')
     parser.add_argument('--add_lstm', action='store_true',
@@ -147,6 +149,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     logging.info('Arguments: ' + str(args))
 
     dataset = DatasetName(args.dataset)
+    dataset_type = DatasetType(args.dataset_type)
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     args.device = device
@@ -159,18 +162,26 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     args.model_type = args.model_type.lower()
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     config = config_class.from_pretrained(args.model_name, num_labels=num_labels, output_hidden_states=True,
-                                          hidden_dropout_prob=args.dropout, attention_probs_dropout_prob=args.dropout)  # TODO: do caching
+                                          hidden_dropout_prob=args.bert_dropout,
+                                          attention_probs_dropout_prob=args.bert_dropout)  # TODO: do caching
     tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
 
     # Training
     model = model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert, pooler=PoolingStrategy(args.pooler),
-                                        junction_strategy=JunctionStrategy(args.junction_strategy), add_lstm=args.add_lstm,
-                                        lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers)
-    model, global_step, tr_loss = train(args, model, dataset, tokenizer, tb_writer)
+                                        subword_repr_size=args.subword_repr_size, add_lstm=args.add_lstm,
+                                        lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
+                                        lstm_dropout=args.lstm_dropout)
+    model, global_step, tr_loss = train(args, model, dataset, dataset_type, tokenizer, tb_writer)
 
     # TODO: save model
 
     # Evaluation
+    results = evaluate(args, model, dataset, DatasetType.DISTANT, tokenizer)
+    logging.info('Results on distant: ' + str(results))
+
+    results = evaluate(args, model, dataset, DatasetType.TRAIN, tokenizer)
+    logging.info('Results on train: ' + str(results))
+
     results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
     logging.info('Results on test: ' + str(results))
 

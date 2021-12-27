@@ -163,18 +163,17 @@ POOLERS = {
 class CRFForBERT(nn.Module):
     """BERT-aware MarginalCRF implementation"""
 
-    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, junction_strategy: JunctionStrategy,
-                 subword_repr_size: int = 0, add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128):
+    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, subword_repr_size: int = 0, add_lstm: bool = False,
+                 lstm_layers: int = 2, lstm_hidden: int = 128):
         super().__init__()
 
-        self.strategy = junction_strategy
         self.subword_repr_size = subword_repr_size
 
         self.num_labels = num_labels
         self.dropout = nn.Dropout(dropout_prob)
 
         if self.subword_repr_size > 0:
-            self.cnn - nn.Conv2d(in_channels=1, out_channels=subword_repr_size, kernel_size=(3, hidden_size), padding=(1, 0))
+            self.cnn = nn.Conv2d(in_channels=1, out_channels=subword_repr_size, kernel_size=(3, hidden_size), padding=(1, 0))
         else:
             self.cnn = None
 
@@ -198,24 +197,9 @@ class CRFForBERT(nn.Module):
         seq_lens = tuple(seq_lens)
 
         new_label_mask = None
-        if self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_LSTM:
-            if self.lstm is None:
-                raise JunctionError(f'Cannot apply strategy {self.strategy.value} with no LSTM layer!')
 
-            # apply mask to BERT output
-            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-
-            seq_repr = self.dropout(seq_repr)
-            seq_repr, _ = self.lstm(seq_repr)
-        elif self.strategy == JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF:
-            if self.lstm is not None:
-                seq_repr = self.dropout(seq_repr)
-                seq_repr, _ = self.lstm(seq_repr)
-
-            # apply mask to LSTM output
-            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-        else:
-            ValueError(f'Junction type {self.strategy} is not permitted for {self}!')
+        # get first subword of each word
+        seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
 
         if self.subword_repr_size > 0:
             # extract subwords for each entity
@@ -230,6 +214,10 @@ class CRFForBERT(nn.Module):
 
             # concatenate representations
             seq_repr = torch.cat([seq_repr, subwords_repr], dim=2)
+
+        if self.lstm is not None:
+            seq_repr = self.dropout(seq_repr)
+            seq_repr, _ = self.lstm(seq_repr)
 
         if label_mask is None:
             label_mask = new_label_mask
@@ -289,9 +277,9 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
     pretrained_model_archive_map = ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "roberta"
 
-    def __init__(self, config: RobertaConfig, junction_strategy: JunctionStrategy = JunctionStrategy.IGNORE_WITH_MASK_BEFORE_CRF,
-                 freeze_bert: bool = False, pooler: PoolingStrategy = PoolingStrategy.LAST,
-                 add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128):
+    def __init__(self, config: RobertaConfig, freeze_bert: bool = False, pooler: PoolingStrategy = PoolingStrategy.LAST,
+                 subword_repr_size: int = 0, add_lstm: bool = False, lstm_layers: int = 2, lstm_hidden: int = 128,
+                 lstm_dropout: float = 0.5):
 
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -301,8 +289,9 @@ class RobertaCRFForTokenClassification(BertPreTrainedModel):
         self.roberta = RobertaModel(config)
         self.frozen_bert = freeze_bert
         self.pooler = pooler
-        self.head = CRFForBERT(num_labels=self.num_labels, hidden_size=hidden_size, dropout_prob=config.hidden_dropout_prob,
-                               junction_strategy=junction_strategy, add_lstm=add_lstm, lstm_hidden=lstm_hidden, lstm_layers=lstm_layers)
+        self.head = CRFForBERT(num_labels=self.num_labels, hidden_size=hidden_size, dropout_prob=lstm_dropout,
+                               subword_repr_size=subword_repr_size, add_lstm=add_lstm,
+                               lstm_hidden=lstm_hidden, lstm_layers=lstm_layers)
 
         if self.frozen_bert:
             self.freeze_bert()

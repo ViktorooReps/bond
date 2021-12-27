@@ -59,10 +59,10 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
     return results
 
 
-def train(args, model: PreTrainedModel, dataset: DatasetName, tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter):
+def train(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
 
-    train_dataset = load_dataset(dataset, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length)
+    train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
