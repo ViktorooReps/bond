@@ -46,7 +46,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Name of the experiment')
 
     # Other parameters
-    parser.add_argument("--dataset_type", default='distant', type=str,
+    parser.add_argument("--dataset_type", default='distant/train', type=str,
                         help='One of ' + ', '.join(dataset_type.value for dataset_type in DatasetType))
     parser.add_argument("--max_seq_length", default=128, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, "
