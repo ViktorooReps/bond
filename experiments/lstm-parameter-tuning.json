@@ -1,16 +1,16 @@
 [
   {
     "script": "train.py",
-    "save_output": "logs/crf-lstm-only-large-dropout/script_output.log",
+    "save_output": "logs/crf-lstm-only-large-dropout-2layers-hidden256/script_output.log",
     "args": [
-      "--experiment_name=crf-lstm-only-large-dropout",
+      "--experiment_name=crf-lstm-only-large-dropout-2layers-hidden256",
       "--dataset=conll03",
       "--model_type=roberta-crf",
       "--model_name=roberta-base",
       "--gradient_accumulation_steps=2",
       "--add_lstm",
-      "--lstm_hidden_size=128",
-      "--lstm_num_layers=1",
+      "--lstm_hidden_size=256",
+      "--lstm_num_layers=2",
       "--lstm_dropout=0.5",
       "--head_learning_rate=5e-04",
       "--bert_learning_rate=1e-05",
