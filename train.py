@@ -10,7 +10,7 @@ from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, R
 
 from bond.data import DatasetName, DatasetType, load_tags_dict
 from bond.model import JunctionStrategy, PoolingStrategy, RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
-from bond.trainer import evaluate, train
+from bond.trainer import TrainingFramework, evaluate, train
 from bond.utils import Scores, set_seed
 
 try:
@@ -59,6 +59,9 @@ def create_parser() -> argparse.ArgumentParser:
                         help="random seed for initialization")
 
     # General training parameters
+    parser.add_argument('--framework', default='bond',
+                        help='Training framework for teaching RoBERTa model. '
+                             'One of ' + ', '.join(framework.value for framework in TrainingFramework))
     parser.add_argument("--batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
     parser.add_argument("--steps_per_epoch", type=int, default=-1,
@@ -171,7 +174,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                                         subword_repr_size=args.subword_repr_size, add_lstm=args.add_lstm,
                                         lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
                                         lstm_dropout=args.lstm_dropout)
-    model, global_step, tr_loss = train(args, model, dataset, dataset_type, tokenizer, tb_writer)
+    model, global_step, tr_loss = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
 
     # TODO: save model
 
