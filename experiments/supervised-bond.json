@@ -1,0 +1,32 @@
+[
+  {
+    "script": "train.py",
+    "save_output": "logs/supervised+bond-5ner+5bond-only-crf-lr5/script_output.log",
+    "args": [
+      "--framework=bond",
+      "--experiment_name=supervised-5epochs-only-crf-lr5",
+      "--dataset=conll03",
+      "--dataset_type=gold/train",
+      "--model_type=roberta-crf",
+      "--model_name=roberta-base",
+      "--gradient_accumulation_steps=2",
+      "--bert_dropout=0.1",
+      "--subword_repr_size=0",
+      "--head_learning_rate=5e-04",
+      "--bert_learning_rate=5e-05",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-06",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.999",
+      "--warmup_proportion=0.1",
+      "--ner_fit_epochs=5",
+      "--use_linear_scheduler",
+      "--reinit_scheduler",
+      "--self_training_epochs=5",
+      "--label_keep_threshold=0.9",
+      "--use_kldiv_loss",
+      "--correct_frequency",
+      "--seed=42"
+    ]
+  }
+]

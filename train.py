@@ -115,6 +115,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='number of epochs for self training stage')
     parser.add_argument('--label_keep_threshold', type=float, default=0.9,
                         help='Label keeping threshold for self training stage')
+    parser.add_argument('--reinit_scheduler', action='store_true',
+                        help='Reinit scheduler before self training stage')
     parser.add_argument("--lr_st_decay", default=1.0, type=float,
                         help="Learning rate decay between stages for self training stage")
     parser.add_argument('--use_linear_scheduler', action='store_true',
