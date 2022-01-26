@@ -1,10 +1,10 @@
 [
   {
     "script": "train.py",
-    "save_output": "logs/supervised-10epochs/script_output.log",
+    "save_output": "logs/supervised-baseline/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=supervised-10epochs",
+      "--experiment_name=supervised-baseline",
       "--dataset=conll03",
       "--dataset_type=gold/train",
       "--model_type=roberta-crf",
@@ -23,28 +23,28 @@
       "--adam_beta1=0.9",
       "--adam_beta2=0.98",
       "--warmup_proportion=0.1",
-      "--ner_fit_epochs=10",
+      "--ner_fit_epochs=50",
       "--use_linear_scheduler",
       "--seed=42"
     ]
   },
   {
     "script": "train.py",
-    "save_output": "logs/supervised-20epochs/script_output.log",
+    "save_output": "logs/supervised-larger-hidden-and-subw/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=supervised-20epochs",
+      "--experiment_name=supervised-larger-hidden-and-subw",
       "--dataset=conll03",
       "--dataset_type=gold/train",
       "--model_type=roberta-crf",
       "--model_name=roberta-base",
       "--gradient_accumulation_steps=2",
       "--add_lstm",
-      "--lstm_hidden_size=256",
+      "--lstm_hidden_size=512",
       "--lstm_num_layers=1",
       "--lstm_dropout=0.5",
       "--bert_dropout=0.1",
-      "--subword_repr_size=512",
+      "--subword_repr_size=1024",
       "--head_learning_rate=5e-04",
       "--bert_learning_rate=1e-05",
       "--weight_decay=1e-04",
@@ -52,17 +52,17 @@
       "--adam_beta1=0.9",
       "--adam_beta2=0.98",
       "--warmup_proportion=0.1",
-      "--ner_fit_epochs=20",
+      "--ner_fit_epochs=50",
       "--use_linear_scheduler",
       "--seed=42"
     ]
   },
   {
     "script": "train.py",
-    "save_output": "logs/supervised-30epochs/script_output.log",
+    "save_output": "logs/supervised-no-subw/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=supervised-30epochs",
+      "--experiment_name=supervised-no-subw",
       "--dataset=conll03",
       "--dataset_type=gold/train",
       "--model_type=roberta-crf",
@@ -73,6 +73,30 @@
       "--lstm_num_layers=1",
       "--lstm_dropout=0.5",
       "--bert_dropout=0.1",
+      "--head_learning_rate=5e-04",
+      "--bert_learning_rate=1e-05",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--warmup_proportion=0.1",
+      "--ner_fit_epochs=50",
+      "--use_linear_scheduler",
+      "--seed=42"
+    ]
+  },
+  {
+    "script": "train.py",
+    "save_output": "logs/supervised-no-lstm/script_output.log",
+    "args": [
+      "--framework=supervised",
+      "--experiment_name=supervised-no-lstm",
+      "--dataset=conll03",
+      "--dataset_type=gold/train",
+      "--model_type=roberta-crf",
+      "--model_name=roberta-base",
+      "--gradient_accumulation_steps=2",
+      "--bert_dropout=0.1",
       "--subword_repr_size=512",
       "--head_learning_rate=5e-04",
       "--bert_learning_rate=1e-05",
@@ -81,7 +105,30 @@
       "--adam_beta1=0.9",
       "--adam_beta2=0.98",
       "--warmup_proportion=0.1",
-      "--ner_fit_epochs=30",
+      "--ner_fit_epochs=50",
+      "--use_linear_scheduler",
+      "--seed=42"
+    ]
+  },
+  {
+    "script": "train.py",
+    "save_output": "logs/supervised-only-roberta/script_output.log",
+    "args": [
+      "--framework=supervised",
+      "--experiment_name=supervised-only-roberta",
+      "--dataset=conll03",
+      "--dataset_type=gold/train",
+      "--model_type=roberta",
+      "--model_name=roberta-base",
+      "--gradient_accumulation_steps=2",
+      "--head_learning_rate=5e-04",
+      "--bert_learning_rate=1e-05",
+      "--weight_decay=1e-04",
+      "--adam_epsilon=1e-08",
+      "--adam_beta1=0.9",
+      "--adam_beta2=0.98",
+      "--warmup_proportion=0.1",
+      "--ner_fit_epochs=50",
       "--use_linear_scheduler",
       "--seed=42"
     ]
