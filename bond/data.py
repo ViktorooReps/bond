@@ -106,7 +106,7 @@ class SubTokenDataset(Dataset):  # need to somehow implement gold labels
 def extract_ids_and_masks(json_dataset: Iterable[Dict[str, Any]],
                           tokenizer: PreTrainedTokenizer,
                           max_seq_length: int,
-                          sep_token: str) -> Iterator[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]:
+                          sep_token: str) -> Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]]:
     """Creates generator that outputs (token_ids, token_mask, labels) from json dataset"""
     for entry_idx, entry in enumerate(json_dataset):
         words = entry['str_words']
