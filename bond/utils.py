@@ -62,7 +62,7 @@ def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags
 
 
 def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
-                       warmup_steps: int) -> Tuple[PreTrainedModel, Optimizer, BaseScheduler]:
+                       warmup_steps: int, end_lr_proportion: float = 0) -> Tuple[PreTrainedModel, Optimizer, BaseScheduler]:
     """Only compatible with RoBERTa-base for now"""
     model.to(args.device)
 
@@ -121,6 +121,8 @@ def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
     if params_1:
         embed_params = {"params": params_1, "lr": lr, "weight_decay": decay, "name": f"embeddings_with_decay"}
         opt_parameters.append(embed_params)
+
+    total_steps *= 1 + end_lr_proportion
 
     optimizer = AdamW(opt_parameters, eps=args.adam_epsilon, betas=(args.adam_beta1, args.adam_beta2))
     if args.use_linear_scheduler:

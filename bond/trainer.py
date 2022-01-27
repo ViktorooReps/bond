@@ -95,11 +95,13 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
         ner_epochs = int(math.ceil(args.ner_fit_steps / min_steps_per_epoch))
         ner_steps = args.ner_fit_steps
 
-    total_steps = ner_steps + st_steps if not args.reinit_scheduler else ner_steps
+    total_steps = ner_steps
     warmup_steps = int(args.warmup_proportion * max_steps_per_epoch)
     warmup_batches = warmup_steps * gradient_accumulation_steps
 
-    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=warmup_steps)
+    # prepare scheduler for NER fitting stage
+    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=warmup_steps,
+                                                     end_lr_proportion=args.self_training_lr_proportion)
 
     # Train!
 
@@ -193,9 +195,12 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     self_training_teacher_model = deepcopy(model)
     self_training_teacher_model.eval()
 
-    if args.reinit_scheduler:
-        total_steps = st_steps
-        model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=0)
+    total_steps = st_steps
+    args.bert_learning_rate *= args.self_training_lr_proportion
+    args.head_learning_rate *= args.self_training_lr_proportion
+
+    # prepare scheduler for NER fitting stage
+    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=0, end_lr_proportion=0)
 
     # Self training
     for self_training_epoch in range(st_epochs):

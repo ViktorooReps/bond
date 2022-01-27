@@ -68,6 +68,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Number of optimization steps per epoch.")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=-1,
                         help='Number of batches in each step.')
+    parser.add_argument('--use_linear_scheduler', action='store_true',
+                        help='Use linear scheduler from transformers')
     parser.add_argument("--bert_learning_rate", default=1e-5, type=float,
                         help="The initial learning rate for RoBERTa.")
     parser.add_argument('--freeze_bert', action='store_true',
@@ -103,11 +105,11 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of LSTM layers')
 
     # NER training parameters
-    parser.add_argument("--ner_fit_epochs", default=1, type=int,
-                        help="number of epochs for NER fitting stage")
+    parser.add_argument('--ner_fit_epochs', default=1, type=int,
+                        help='Number of epochs for NER fitting stage')
     parser.add_argument('--ner_fit_steps', default=-1, type=int,
                         help='Number of NER fitting steps. -1 for using epochs')
-    parser.add_argument("--warmup_proportion", default=0.1, type=float,
+    parser.add_argument('--warmup_proportion', default=0.1, type=float,
                         help='Proportion of first NER epoch to use for warmup.')
 
     # Self-training parameters
@@ -115,18 +117,14 @@ def create_parser() -> argparse.ArgumentParser:
                         help='number of epochs for self training stage')
     parser.add_argument('--label_keep_threshold', type=float, default=0.9,
                         help='Label keeping threshold for self training stage')
-    parser.add_argument('--reinit_scheduler', action='store_true',
-                        help='Reinit scheduler before self training stage')
-    parser.add_argument("--lr_st_decay", default=1.0, type=float,
-                        help="Learning rate decay between stages for self training stage")
-    parser.add_argument('--use_linear_scheduler', action='store_true',
-                        help='Use linear scheduler from transformers')
+    parser.add_argument('--self_training_lr_proportion', type=float, default=0.2,
+                        help='Proportion of initial learning rate to use for self training stage')
     parser.add_argument('--correct_frequency', action='store_true',
                         help='Do soft label frequency correction before choosing labels with threshold')
     parser.add_argument('--use_kldiv_loss', action='store_true',
                         help='Use KLDivLoss during self training')
     parser.add_argument('--period', default=-1, type=int,
-                        help='Period for updating teacher model. -1 for once per epoch')
+                        help='Period in steps for updating teacher model. -1 for once per epoch')
 
     return parser
 
