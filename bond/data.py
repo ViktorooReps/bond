@@ -103,6 +103,7 @@ class SubTokenDataset(Dataset):  # need to somehow implement gold labels
         return self._examples[idx]
 
 
+# TODO: add document-level context
 def extract_ids_and_masks(json_dataset: Iterable[Dict[str, Any]],
                           tokenizer: PreTrainedTokenizer,
                           max_seq_length: int,
@@ -179,6 +180,8 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         with open(distant_dataset_file) as f:
             distant_dataset_file = json.load(f)
+
+        tags_dict = load_tags_dict(dataset_name)
 
         # token ids, token_mask, label ids
         examples: List[Example] = []

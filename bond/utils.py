@@ -19,35 +19,75 @@ def set_seed(seed: int):
     torch.manual_seed(seed)
 
 
-def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags_dict: Dict[str, int]) -> Scores:
+Entity = Tuple[int, Tuple[int, ...]]
+
+
+def extract_entities(labels: Iterable[int], tags_dict: Dict[str, int]) -> Iterable[Entity]:
+    """Extracts entities as tuples: (start_idx, (label0, label1, ..., labelN))"""
     labels_dict = {label: tag for tag, label in tags_dict.items()}
     entity_start = {tag for tag in tags_dict if tag.startswith('B')}
     no_entity = {'O'}
 
-    def extract_entities(labels: Iterable[int]) -> Iterable[Tuple[int, tuple]]:
-        """Extracts entities as tuples: (start_idx, (label0, label1, ..., labelN))"""
-        entity_labels = []
-        entity_idx: Optional[int] = None
+    entity_labels = []
+    entity_idx: Optional[int] = None
 
-        for curr_idx, label in enumerate(labels):
-            tag = labels_dict[label]
-            if tag in entity_start:
-                if entity_idx is not None:
-                    yield entity_idx, tuple(entity_labels)
-                entity_idx = curr_idx
-                entity_labels = [label]
-            elif tag in no_entity:
-                if entity_idx is not None:
-                    yield entity_idx, tuple(entity_labels)
-                entity_idx = None
-            else:
-                entity_labels.append(label)
+    for curr_idx, label in enumerate(labels):
+        tag = labels_dict[label]
+        if tag in entity_start:
+            if entity_idx is not None:
+                yield entity_idx, tuple(entity_labels)
+            entity_idx = curr_idx
+            entity_labels = [label]
+        elif tag in no_entity:
+            if entity_idx is not None:
+                yield entity_idx, tuple(entity_labels)
+            entity_idx = None
+        else:
+            entity_labels.append(label)
 
-        if entity_idx is not None:
-            yield entity_idx, tuple(entity_labels)
+    if entity_idx is not None:
+        yield entity_idx, tuple(entity_labels)
 
-    gold_entities = set(extract_entities(gold_labels))
-    predicted_entities = set(extract_entities(predicted_labels))
+
+def merge_entity_lists(high_priority_entities: Iterable[Entity], low_priority_entities: Iterable[Entity]) -> Tuple[Entity]:
+    hp_entities = set(high_priority_entities)
+    lp_entities = set(low_priority_entities)
+
+    coarse_merged_entities = list(hp_entities.union(lp_entities))
+    sorted_coarse_entities = sorted(coarse_merged_entities, key=lambda t: t[0])
+
+    unwanted_entities = set()
+
+    def check_collision(entity_idx: int) -> bool:
+        def collides(ent1: Entity, ent2: Entity) -> bool:
+            """[ent_start, ent_end)"""
+            ent1_start_pos, ent1_labels = ent1
+            ent1_end_pos = ent1_start_pos + len(ent1_labels)
+
+            ent2_start_pos, _ = ent2
+            return ent1_end_pos <= ent2_start_pos
+
+        if entity_idx > 0 and collides(sorted_coarse_entities[entity_idx - 1], sorted_coarse_entities[entity_idx]):
+            return True
+        if entity_idx < len(sorted_coarse_entities) - 1 and collides(sorted_coarse_entities[entity_idx],
+                                                                     sorted_coarse_entities[entity_idx + 1]):
+            return True
+        return False
+
+    for ent_idx, ent in enumerate(sorted_coarse_entities):
+        if ent in lp_entities and check_collision(ent_idx):
+            unwanted_entities.add(ent)
+
+    return tuple(filter(lambda e: e not in unwanted_entities, sorted_coarse_entities))
+
+
+def convert_entities_to_labels(entities: Iterable[Entity]) -> Tuple[int]:
+    sorted_entities = sorted(entities, key=lambda t: t[0])
+
+
+def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags_dict: Dict[str, int]) -> Scores:
+    gold_entities = set(extract_entities(gold_labels, tags_dict))
+    predicted_entities = set(extract_entities(predicted_labels, tags_dict))
 
     total_predicted = len(predicted_entities)  # true_positive + false_positive
     total_entities = len(gold_entities)        # true_positive + false_negative

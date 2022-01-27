@@ -270,10 +270,6 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
                     log_metrics({**results, 'loss': (tr_loss - logging_loss) / args.logging_steps}, 'self_training')
                     logging_loss = tr_loss
 
-        # update lr of all layers
-        for group in optimizer.param_groups:
-            group['lr'] *= args.lr_st_decay
-
     tb_writer.close()
 
     return model, global_step, tr_loss / global_step
