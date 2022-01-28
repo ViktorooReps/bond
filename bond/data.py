@@ -120,6 +120,10 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                           *, fixed: bool = False) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
             l_context, r_context = [], []
 
+            def tokenize_sent(sentence: Iterable[str]) -> Iterator[str]:
+                for w in sentence:
+                    yield from tokenizer(w)
+
             # check for document boundaries
 
             if s_idx == 0 and s_idx == len(document) - 1:
@@ -138,24 +142,26 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
             # carve needed context
 
             if l_context_size > 1:
-                prev_sent = document[sent_idx - 1]['str_tokens']
+                prev_sent = document[sent_idx - 1]['str_words']
+                tokenized_sent = list(tokenize_sent(prev_sent))
                 actual_context_size = l_context_size - 1  # 1 for sep token
-                if len(prev_sent) >= actual_context_size:
-                    l_context = prev_sent[-actual_context_size:] + [sep_token]
+                if len(tokenized_sent) >= actual_context_size:
+                    l_context = tokenized_sent[-actual_context_size:] + [sep_token]
                 else:
-                    next_context_size = l_context_size - len(prev_sent)
+                    next_context_size = l_context_size - len(tokenized_sent)
                     next_context, _ = fetch_context(s_idx - 1, next_context_size, 0, fixed=True)
-                    l_context = list(next_context) + prev_sent + [sep_token]
+                    l_context = list(next_context) + tokenized_sent + [sep_token]
 
             if r_context_size > 1:
-                next_sent = document[sent_idx + 1]['str_tokens']
+                next_sent = document[sent_idx + 1]['str_words']
+                tokenized_sent = list(tokenize_sent(next_sent))
                 actual_context_size = r_context_size - 1  # 1 for sep token
-                if len(next_sent) >= actual_context_size:
-                    r_context = [sep_token] + next_sent[:actual_context_size]
+                if len(tokenized_sent) >= actual_context_size:
+                    r_context = [sep_token] + tokenized_sent[:actual_context_size]
                 else:
-                    next_context_size = r_context_size - len(next_sent)
+                    next_context_size = r_context_size - len(tokenized_sent)
                     next_context, _ = fetch_context(s_idx - 1, 0, next_context_size, fixed=True)
-                    r_context = [sep_token] + next_sent + list(next_context)
+                    r_context = [sep_token] + tokenized_sent + list(next_context)
 
             return tuple(l_context), tuple(r_context)
 
