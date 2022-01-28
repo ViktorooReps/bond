@@ -162,7 +162,7 @@ def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
         embed_params = {"params": params_1, "lr": lr, "weight_decay": decay, "name": f"embeddings_with_decay"}
         opt_parameters.append(embed_params)
 
-    total_steps = int(total_steps * (1 + args.end_lr_proportion / (1 - args.end_lr_proportion)))
+    total_steps = int(total_steps * (1 + end_lr_proportion / (1 - end_lr_proportion)))
 
     optimizer = AdamW(opt_parameters, eps=args.adam_epsilon, betas=(args.adam_beta1, args.adam_beta2))
     if args.use_linear_scheduler:
