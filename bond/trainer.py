@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
-from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict
+from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict, load_transformed_dataset
 from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency
 
 try:
@@ -69,8 +69,10 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
                tb_writer: SummaryWriter):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
-
-    train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+    if args.add_gold_labels > 0.0 and dataset_type == DatasetType.DISTANT:
+        train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length)
+    else:
+        train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
@@ -286,7 +288,10 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
                      tb_writer: SummaryWriter):
     """Train model for ner_fit_epochs epochs"""
 
-    train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+    if args.add_gold_labels > 0.0 and dataset_type == DatasetType.DISTANT:
+        train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length)
+    else:
+        train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)

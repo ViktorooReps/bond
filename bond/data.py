@@ -4,6 +4,7 @@ import os
 from enum import Enum
 from functools import partial
 from pathlib import Path
+from random import shuffle
 from typing import Dict, List, Tuple, Union, Iterable, Callable, Iterator, Any
 
 import torch
@@ -12,6 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
+from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels
 
 PAD_LABEL_ID = -1
 
@@ -157,6 +159,7 @@ def extract_ids_and_masks(json_dataset: Iterable[Dict[str, Any]],
         yield tuple(token_ids), tuple(token_mask), tuple(labels)
 
 
+# TODO: add gold label mask for BOND
 def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
                              max_seq_length: int, sep_token: str = 'SEP') -> SubTokenDataset:
 
@@ -179,13 +182,28 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             gold_json_dataset = json.load(f)
 
         with open(distant_dataset_file) as f:
-            distant_dataset_file = json.load(f)
+            distant_json_dataset = json.load(f)
 
         tags_dict = load_tags_dict(dataset_name)
 
         # token ids, token_mask, label ids
         examples: List[Example] = []
-        for token_ids, token_mask, labels in extract_ids_and_masks(json_dataset, tokenizer, max_seq_length, sep_token):
+        extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length, sep_token=sep_token)
+        iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
+        for (token_ids, token_mask, gold_labels), (_, _, distant_labels) in iterator:
+            assert len(gold_labels) == len(distant_labels)
+            original_len = len(gold_labels)
+
+            gold_entities = list(extract_entities(gold_labels, tags_dict))
+            distant_entities = list(extract_entities(distant_labels, tags_dict))
+            shuffle(gold_entities)
+
+            added_entities_count = int(len(gold_entities) * add_gold)
+            entities_to_add = gold_entities[:added_entities_count]
+
+            merged_entities = merge_entity_lists(high_priority_entities=entities_to_add, low_priority_entities=distant_entities)
+            labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=original_len)
+
             examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels)))
 
         # convert to tensors and build dataset

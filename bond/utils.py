@@ -81,8 +81,22 @@ def merge_entity_lists(high_priority_entities: Iterable[Entity], low_priority_en
     return tuple(filter(lambda e: e not in unwanted_entities, sorted_coarse_entities))
 
 
-def convert_entities_to_labels(entities: Iterable[Entity]) -> Tuple[int]:
-    sorted_entities = sorted(entities, key=lambda t: t[0])
+def convert_entities_to_labels(entities: Iterable[Entity], no_entity_label: int, vector_len: int) -> Tuple[int]:
+    result = [no_entity_label] * vector_len
+
+    def validate_entity(start_idx: int, end_idx: int) -> None:
+        for idx in range(start_idx, end_idx):
+            if result[idx] != no_entity_label:
+                raise ValueError('Entity collision detected!')
+
+    for entity in entities:
+        entity_start, entity_labels = entity
+        entity_end = entity_start + len(entity_labels)
+        validate_entity(entity_start, entity_end)
+        for label_idx, label in zip(range(entity_start, entity_end), entity_labels):
+            result[label_idx] = label
+
+    return tuple(result)
 
 
 def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags_dict: Dict[str, int]) -> Scores:
