@@ -105,16 +105,63 @@ class SubTokenDataset(Dataset):  # need to somehow implement gold labels
         return self._examples[idx]
 
 
-# TODO: add document-level context
 def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                           tokenizer: PreTrainedTokenizer,
-                          max_seq_length: int,
-                          sep_token: str) -> Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]]:
+                          max_seq_length: int) -> Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]]:
     """Creates generator that outputs (token_ids, token_mask, labels) from json dataset"""
+
+    sep_token = tokenizer.sep_token
+    cls_token = tokenizer.cls_token
+
+    special_token_count = 2  # RoBERTa uses double [SEP] token
     for document in json_dataset:
-        for sentence in document:
-            words = sentence['str_words']
-            labels = sentence['tags']
+
+        def fetch_context(s_idx: int, l_context_size: int, r_context_size: int,
+                          *, fixed: bool = False) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+            l_context, r_context = [], []
+
+            # check for document boundaries
+
+            if s_idx == 0 and s_idx == len(document) - 1:
+                return (), ()
+
+            if s_idx == 0:
+                if not fixed:
+                    r_context_size += l_context_size
+                l_context_size = 0
+
+            if s_idx == len(document) - 1:
+                if not fixed:
+                    l_context_size += r_context_size
+                r_context_size = 0
+
+            # carve needed context
+
+            if l_context_size > 1:
+                prev_sent = document[sent_idx - 1]['str_tokens']
+                actual_context_size = l_context_size - 1  # 1 for sep token
+                if len(prev_sent) >= actual_context_size:
+                    l_context = prev_sent[-actual_context_size:] + [sep_token]
+                else:
+                    next_context_size = l_context_size - len(prev_sent)
+                    next_context, _ = fetch_context(s_idx - 1, next_context_size, 0, fixed=True)
+                    l_context = list(next_context) + prev_sent + [sep_token]
+
+            if r_context_size > 1:
+                next_sent = document[sent_idx + 1]['str_tokens']
+                actual_context_size = r_context_size - 1  # 1 for sep token
+                if len(next_sent) >= actual_context_size:
+                    r_context = [sep_token] + next_sent[:actual_context_size]
+                else:
+                    next_context_size = r_context_size - len(next_sent)
+                    next_context, _ = fetch_context(s_idx - 1, 0, next_context_size, fixed=True)
+                    r_context = [sep_token] + next_sent + list(next_context)
+
+            return tuple(l_context), tuple(r_context)
+
+        for sent_idx, sent in enumerate(document):
+            words = sent['str_words']
+            labels = sent['tags']
 
             tokens = []
             token_mask = []
@@ -126,12 +173,25 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                 tokens.extend(word_tokens)
                 token_mask.extend([True] + [False] * (len(word_tokens) - 1))
 
-            special_token_count = 2  # RoBERTa uses double [SEP] token
-            if len(tokens) > max_seq_length - special_token_count:
+            desired_seq_len = max_seq_length - special_token_count
+            if len(tokens) > desired_seq_len:
                 logging.warning('Extra long sentence detected!')
                 continue
+                # TODO
                 # tokens = tokens[: (max_seq_length - special_token_count)]
                 # label_ids = label_ids[: (max_seq_length - special_token_count)]
+
+            if len(tokens) < desired_seq_len:
+                added_context = max_seq_length - len(tokens)
+                left_context_len = (added_context // 2) + (added_context % 2)
+                right_context_len = added_context // 2
+
+                left_context, right_context = fetch_context(sent_idx, left_context_len, right_context_len)
+                tokens = list(left_context) + tokens + list(right_context)
+                token_mask = [False] * len(left_context) + token_mask + [False] * len(right_context)
+
+            tokens = [cls_token] + tokens + [sep_token]
+            token_mask = [False] + token_mask + [False]
 
             # The convention in BERT is:
             # (a) For sequence pairs:
@@ -152,9 +212,6 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
             # used as  the "sentence vector". Note that this only makes sense because
             # the entire model is fine-tuned.
 
-            tokens += [sep_token, sep_token]  # double [SEP] token for RoBERTa
-            token_mask += [False, False]
-
             token_ids: List[int] = tokenizer.convert_tokens_to_ids(tokens)
 
             yield tuple(token_ids), tuple(token_mask), tuple(labels)
@@ -162,7 +219,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 
 # TODO: add gold label mask for BOND
 def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                             max_seq_length: int, sep_token: str = 'SEP') -> SubTokenDataset:
+                             max_seq_length: int) -> SubTokenDataset:
 
     cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
@@ -189,7 +246,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         # token ids, token_mask, label ids
         examples: List[Example] = []
-        extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length, sep_token=sep_token)
+        extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length)
         iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
         for (token_ids, token_mask, gold_labels), (_, _, distant_labels) in iterator:
             assert len(gold_labels) == len(distant_labels)
@@ -217,7 +274,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
 
 def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                 max_seq_length: int, sep_token: str = 'SEP') -> SubTokenDataset:
+                 max_seq_length: int) -> SubTokenDataset:
 
     cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
@@ -234,7 +291,7 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
 
         # token ids, token_mask, label ids
         examples: List[Example] = []
-        for token_ids, token_mask, labels in extract_ids_and_masks(json_dataset, tokenizer, max_seq_length, sep_token):
+        for token_ids, token_mask, labels in extract_ids_and_masks(json_dataset, tokenizer, max_seq_length):
             examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels)))
 
         # convert to tensors and build dataset
