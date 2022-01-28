@@ -1,38 +1,38 @@
 import json
-from typing import Any, Dict, List, Optional, Set
+from typing import List
 
 from bond.data import load_tags_dict, DatasetName
 
-JsonEntry = Dict[str, list]
-JsonDataset = List[JsonEntry]
+
+def old_to_new_format():
+    with open('dataset/data/conll03/distant/train.json') as distant_file:
+        old_formatted_distant: List[dict] = json.load(distant_file)
+
+    with open('dataset/data/conll03/gold/train.json') as gold_file:
+        new_formatted_gold: List[List[dict]] = json.load(gold_file)
+
+    old_total_sentences = len(old_formatted_distant)
+    doc_lens = [len(new_formatted_doc) for new_formatted_doc in new_formatted_gold]
+    new_total_sentences = sum(doc_lens)
+
+    assert old_total_sentences == new_total_sentences
+
+    docs = []
+    prev_sent_idx = 0
+    for doc_len in doc_lens:
+        curr_sent_idx = prev_sent_idx + doc_len
+        docs.append(old_formatted_distant[prev_sent_idx: curr_sent_idx])
+        prev_sent_idx = curr_sent_idx
+
+    new_doc_lens = [len(doc) for doc in docs]
+
+    assert doc_lens == new_doc_lens
+
+    with open('dataset/data/conll03/distant/train.json', 'w') as distant_file:
+        json.dump(docs, distant_file)
 
 
-def transform_dataset(dataset: JsonDataset,
-                      key_conversion: Optional[Dict[str, str]] = None,
-                      value_conversion: Optional[Dict[str, dict]] = None,
-                      exclude_keys: Optional[Set[str]] = None) -> JsonDataset:
-
-    new_dataset: JsonDataset = []
-    key_conversion = key_conversion if key_conversion is not None else {}
-    value_conversion = value_conversion if value_conversion is not None else {}
-    exclude_keys = exclude_keys if exclude_keys is not None else set()
-
-    for entry in dataset:
-        new_entry: JsonEntry = {}
-        for key in filter(lambda k: k not in exclude_keys, entry.keys()):
-
-            def convert_value(value: Any) -> Any:
-                value_converter = value_conversion.get(key, {})
-                return value_converter.get(value, value)
-
-            new_entry[key_conversion.get(key, key)] = list(map(convert_value, entry[key]))
-
-        new_dataset.append(new_entry)
-
-    return new_dataset
-
-
-def conll03_raw_to_json(raw_file_name: str, json_file_name: str):
+def conll03_raw_to_json(raw_file_name: str, json_file_name: str) -> None:
     with open(raw_file_name) as raw_file:
         raw_text = raw_file.read()
 
