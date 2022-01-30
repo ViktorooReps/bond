@@ -10,8 +10,8 @@ from torch.nn.functional import pad, one_hot
 from torch.optim import Optimizer
 from transformers import AdamW, PreTrainedModel, get_constant_schedule_with_warmup, get_linear_schedule_with_warmup
 
-from bond.data import Entity
 
+Entity = Tuple[int, Tuple[int, ...]]
 Scores = Dict[str, float]
 
 
