@@ -54,7 +54,7 @@ def create_parser() -> argparse.ArgumentParser:
                              "sequences shorter will be padded.")
     parser.add_argument("--no_cuda", action="store_true",
                         help="Avoid using CUDA when available")
-    parser.add_argument("--logging", type=int, default=3000,
+    parser.add_argument("--logging", type=int, default=1000,
                         help="Log every X examples seen.")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed for initialization")
@@ -165,8 +165,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     config = config_class.from_pretrained(args.model_name, num_labels=num_labels, output_hidden_states=True,
                                           hidden_dropout_prob=args.bert_dropout,
-                                          attention_probs_dropout_prob=args.bert_dropout)  # TODO: do caching
-    tokenizer = tokenizer_class.from_pretrained(args.model_name)  # TODO: do caching
+                                          attention_probs_dropout_prob=args.bert_dropout)
+    tokenizer = tokenizer_class.from_pretrained(args.model_name)
 
     # Training
     model = model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert, pooler=PoolingStrategy(args.pooler),
@@ -174,8 +174,6 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                                         lstm_layers=args.lstm_num_layers, lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout,
                                         add_crf=args.add_crf)
     model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
-
-    # TODO: save model
 
     # Evaluation
     results = evaluate(args, model, dataset, DatasetType.DISTANT, tokenizer)
