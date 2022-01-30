@@ -165,6 +165,8 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 
             return tuple(l_context), tuple(r_context)
 
+        desired_seq_len = max_seq_length - special_token_count
+
         for sent_idx, sent in enumerate(document):
             words = sent['str_words']
             labels = sent['tags']
@@ -179,7 +181,6 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                 tokens.extend(word_tokens)
                 token_mask.extend([True] + [False] * (len(word_tokens) - 1))
 
-            desired_seq_len = max_seq_length - special_token_count
             if len(tokens) > desired_seq_len:
                 logging.warning('Extra long sentence detected!')
                 continue
@@ -188,7 +189,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                 # label_ids = label_ids[: (max_seq_length - special_token_count)]
 
             if len(tokens) < desired_seq_len:
-                added_context = max_seq_length - len(tokens)
+                added_context = desired_seq_len - len(tokens)
                 left_context_len = (added_context // 2) + (added_context % 2)
                 right_context_len = added_context // 2
 
@@ -227,7 +228,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
                              max_seq_length: int) -> SubTokenDataset:
 
-    cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name])
+    cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name, f'seq{max_seq_length}'])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
     if cached_dataset_file.exists():
@@ -282,7 +283,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
                  max_seq_length: int) -> SubTokenDataset:
 
-    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name])
+    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, f'seq{max_seq_length}'])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
     if cached_dataset_file.exists():
