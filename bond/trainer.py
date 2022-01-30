@@ -377,7 +377,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
             global_batch += 1
 
             batch = tuple(t.to(args.device) for t in batch)
-            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
                       "labels": labels, 'label_mask': label_mask}
 
