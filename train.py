@@ -54,7 +54,7 @@ def create_parser() -> argparse.ArgumentParser:
                              "sequences shorter will be padded.")
     parser.add_argument("--no_cuda", action="store_true",
                         help="Avoid using CUDA when available")
-    parser.add_argument("--logging", type=int, default=100,
+    parser.add_argument("--logging", type=int, default=3000,
                         help="Log every X examples seen.")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed for initialization")
