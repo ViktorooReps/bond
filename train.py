@@ -9,7 +9,7 @@ import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
 
 from bond.data import DatasetName, DatasetType, load_tags_dict
-from bond.model import JunctionStrategy, PoolingStrategy, RobertaCRFForTokenClassification, RobertaForTokenClassificationOriginal
+from bond.model import PoolingStrategy, RobertaWithHead
 from bond.trainer import TrainingFramework, evaluate, train
 from bond.utils import Scores, set_seed
 
@@ -27,8 +27,7 @@ ALL_MODELS = sum(
 )
 
 MODEL_CLASSES = {
-    "roberta-original": (RobertaConfig, RobertaForTokenClassificationOriginal, RobertaTokenizer),
-    "roberta-crf": (RobertaConfig, RobertaCRFForTokenClassification, RobertaTokenizer)
+    "roberta": (RobertaConfig, RobertaWithHead, RobertaTokenizer)
 }
 
 
@@ -81,8 +80,10 @@ def create_parser() -> argparse.ArgumentParser:
                              'One of ' + ', '.join(pooler.value for pooler in PoolingStrategy))
     parser.add_argument('--bert_dropout', default=0.1, type=float,
                         help='Dropout probability for BERT.')
+    parser.add_argument('--head_dropout', default=0.5, type=float,
+                        help='Dropout probability for token representation from BERT')
     parser.add_argument('--lstm_dropout', default=0.5, type=float,
-                        help='Dropout probability for LSTM.')
+                        help='Dropout probability between LSTM layers.')
     parser.add_argument('--head_learning_rate', default=1e-4, type=float,
                         help='The initial learning rate for model\' head: LSTM-CRF or CRF')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
@@ -105,6 +106,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Size of LSTM layer.')
     parser.add_argument('--lstm_num_layers', default=2, type=int,
                         help='Number of LSTM layers')
+    parser.add_argument('--add_crf', action='store_true',
+                        help='Calculate loss and label probabilities using MarginalCRF')
 
     # NER training parameters
     parser.add_argument('--ner_fit_epochs', default=1, type=int,
@@ -173,9 +176,9 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     # Training
     model = model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert, pooler=PoolingStrategy(args.pooler),
-                                        subword_repr_size=args.subword_repr_size, add_lstm=args.add_lstm,
-                                        lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
-                                        lstm_dropout=args.lstm_dropout)
+                                        subword_repr_size=args.subword_repr_size, add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size,
+                                        lstm_layers=args.lstm_num_layers, lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout,
+                                        add_crf=args.add_crf)
     model, global_step, tr_loss = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
 
     # TODO: save model

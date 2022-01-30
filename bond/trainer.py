@@ -11,7 +11,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict, load_transformed_dataset
-from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency
+from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency, convert_hard_to_soft_labels
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -76,7 +76,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
-    num_labels = len(load_tags_dict(dataset))
+    num_labels = len(load_tags_dict(dataset).keys())
 
     if args.steps_per_epoch == -1 and args.gradient_accumulation_steps == -1:
         raise ValueError('Cannot deduce number of steps per epoch! Set gradient_accumulation_steps or steps_per_epoch!')
@@ -246,7 +246,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             _threshold = args.label_keep_threshold
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
 
-            pred_labels[gold_label_mask] = one_hot(labels[gold_label_mask], num_labels)
+            pred_labels[gold_label_mask] = convert_hard_to_soft_labels(labels[gold_label_mask], num_labels)
 
             inputs = {**inputs, **{"labels": pred_labels, "label_mask": (label_mask & teacher_mask) | gold_label_mask}}
 

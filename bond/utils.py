@@ -3,10 +3,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
-from torch import LongTensor, Tensor, BoolTensor
+from torch import LongTensor, Tensor, BoolTensor, FloatTensor
 from torch.ao.sparsity import BaseScheduler
 from torch.nn import Softmax
-from torch.nn.functional import pad
+from torch.nn.functional import pad, one_hot
 from torch.optim import Optimizer
 from transformers import AdamW, PreTrainedModel, get_constant_schedule_with_warmup, get_linear_schedule_with_warmup
 
@@ -271,3 +271,9 @@ def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Bool
     tokens_repr = torch.stack(padded_seqs)
 
     return tokens_repr
+
+
+def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
+    labels[labels < 0] = 0
+    return one_hot(labels, num_labels)
+
