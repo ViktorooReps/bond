@@ -54,8 +54,8 @@ def create_parser() -> argparse.ArgumentParser:
                              "sequences shorter will be padded.")
     parser.add_argument("--no_cuda", action="store_true",
                         help="Avoid using CUDA when available")
-    parser.add_argument("--logging_steps", type=int, default=100,
-                        help="Log every X updates steps.")
+    parser.add_argument("--logging", type=int, default=100,
+                        help="Log every X examples seen.")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed for initialization")
 
@@ -65,8 +65,6 @@ def create_parser() -> argparse.ArgumentParser:
                              'One of ' + ', '.join(framework.value for framework in TrainingFramework))
     parser.add_argument("--batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
-    parser.add_argument("--steps_per_epoch", type=int, default=-1,
-                        help="Number of optimization steps per epoch.")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=-1,
                         help='Number of batches in each step.')
     parser.add_argument('--use_linear_scheduler', action='store_true',
@@ -112,8 +110,6 @@ def create_parser() -> argparse.ArgumentParser:
     # NER training parameters
     parser.add_argument('--ner_fit_epochs', default=1, type=int,
                         help='Number of epochs for NER fitting stage')
-    parser.add_argument('--ner_fit_steps', default=-1, type=int,
-                        help='Number of NER fitting steps. -1 for using epochs')
     parser.add_argument('--warmup_proportion', default=0.1, type=float,
                         help='Proportion of first NER epoch to use for warmup.')
 
@@ -128,8 +124,6 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Do soft label frequency correction before choosing labels with threshold')
     parser.add_argument('--use_kldiv_loss', action='store_true',
                         help='Use KLDivLoss during self training')
-    parser.add_argument('--period', default=-1, type=int,
-                        help='Period in steps for updating teacher model. -1 for once per epoch')
 
     return parser
 
@@ -179,7 +173,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                                         subword_repr_size=args.subword_repr_size, add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size,
                                         lstm_layers=args.lstm_num_layers, lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout,
                                         add_crf=args.add_crf)
-    model, global_step, tr_loss = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
+    model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
 
     # TODO: save model
 
