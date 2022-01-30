@@ -6,10 +6,11 @@ from pathlib import Path
 from time import localtime, strftime
 
 import torch
-from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
+from torch import nn
+from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel
 
 from bond.data import DatasetName, DatasetType, load_tags_dict
-from bond.model import PoolingStrategy, RobertaWithHead
+from bond.model import PoolingStrategy, RobertaWithHead, NLLModel
 from bond.trainer import TrainingFramework, evaluate, train
 from bond.utils import Scores, set_seed
 
@@ -106,6 +107,10 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of LSTM layers')
     parser.add_argument('--add_crf', action='store_true',
                         help='Calculate loss and label probabilities using MarginalCRF')
+    parser.add_argument('--use_nll', action='store_true',
+                        help='Use agreement loss to regularize model')
+    parser.add_argument('--agreement_strength', type=float, default=5.0)  # 1 to 20
+    parser.add_argument('--n_models', type=int, default=4)
 
     # NER training parameters
     parser.add_argument('--ner_fit_epochs', default=1, type=int,
@@ -168,12 +173,18 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                                           attention_probs_dropout_prob=args.bert_dropout)
     tokenizer = tokenizer_class.from_pretrained(args.model_name)
 
+    def model_generator() -> PreTrainedModel:
+        return model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert,
+                                           pooler=PoolingStrategy(args.pooler), subword_repr_size=args.subword_repr_size,
+                                           add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
+                                           lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf)
+
     # Training
-    model = model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert, pooler=PoolingStrategy(args.pooler),
-                                        subword_repr_size=args.subword_repr_size, add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size,
-                                        lstm_layers=args.lstm_num_layers, lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout,
-                                        add_crf=args.add_crf)
-    model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
+    if args.use_nll:
+        model = NLLModel(model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
+    else:
+        model = model_generator()
+        model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
 
     # Evaluation
     results = evaluate(args, model, dataset, DatasetType.DISTANT, tokenizer)

@@ -100,10 +100,6 @@ class BERTHead(nn.Module):
         else:
             self.crf = None
 
-    @property
-    def returns_probs(self) -> bool:
-        return self.crf is not None
-
     def forward(self, seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Optional[BoolTensor] = None,
                 labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
                 self_training: bool = False, use_kldiv_loss: bool = False):
@@ -171,7 +167,7 @@ class BERTHead(nn.Module):
 
             outputs = (loss,) + outputs
 
-        return outputs  # (loss), scores
+        return outputs  # (loss), label probs
 
 
 class RobertaWithHead(BertPreTrainedModel):
@@ -265,3 +261,38 @@ class RobertaWithHead(BertPreTrainedModel):
         outputs = head_outputs + (final_embedding,) + outputs[2:]
 
         return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
+
+
+class NLLModel(nn.Module):
+
+    def __init__(self, model_generator: Callable[[], nn.Module], n_models: int = 4, agreement_strength: float = 5.0):
+        super().__init__()
+        self._models = nn.ModuleList([model_generator() for _ in range(n_models)])
+        self._agreement_strength = agreement_strength
+        self._main_model_idx = 0
+
+    def forward(self, labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None, *args, **kwargs):
+        if labels is None:
+            return self._models[self._main_model_idx](*args, **kwargs)
+
+        if label_mask is None:
+            label_mask = torch.ones(labels.shape)
+
+        n_models = len(self._models)
+
+        # outputs are tuples of (loss, predicted label probs)
+        outputs = [model(*args, **kwargs, labels=labels) for model in self._models]
+        models_loss = sum(loss for loss, _ in outputs) / n_models
+        models_avg_probs = sum(probs for _, probs in outputs) / n_models
+
+        raveled_models_avg_probs = models_avg_probs.contiguous().view(-1, self.num_labels)
+        raveled_mask = label_mask.contiguous().view(-1)
+        masked_avg_probs = raveled_models_avg_probs[raveled_mask]
+
+        kld_loss = KLDivLoss(reduction='mean')
+        agreement_loss = sum(kld_loss(probs[raveled_mask], masked_avg_probs) for _, probs in outputs) / n_models
+
+        loss = models_loss + self._agreement_strength * agreement_loss
+        _, pred_labels = outputs[self._main_model_idx]
+
+        return loss, pred_labels
