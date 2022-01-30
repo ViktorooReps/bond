@@ -16,6 +16,7 @@ from transformers import PreTrainedTokenizer
 from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels
 
 PAD_LABEL_ID = -1
+Entity = Tuple[int, Tuple[int, ...]]
 
 
 class DatasetType(Enum):
@@ -60,10 +61,11 @@ def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
     return label_extensions
 
 
-Example = Tuple[LongTensor, BoolTensor, LongTensor]  # (token ids, token mask, labels)
-BertExample = Tuple[LongTensor, BoolTensor, BoolTensor, LongTensor, BoolTensor]  # (tok ids, tok mask, attention mask, labels, label mask)
-# DistantExample = Tuple[...]  # like BertExample but with gold_mask? - shows gold annotations
-# during training set to 1.0 prob of gold labels
+# (token ids, token mask, labels, gold label mask)
+Example = Tuple[LongTensor, BoolTensor, LongTensor, BoolTensor]
+
+# (tok ids, tok mask, attention mask, labels, label mask, gold label mask)
+BertExample = Tuple[LongTensor, BoolTensor, BoolTensor, LongTensor, BoolTensor, BoolTensor]
 
 
 def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExample:
@@ -72,19 +74,22 @@ def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExamp
     attention_masks = []
     labels = []
     label_masks = []
+    gold_label_masks = []
 
-    for t_ids, t_mask, ls in batch:
+    for t_ids, t_mask, ls, gl_mask in batch:
         token_ids.append(t_ids)
         token_masks.append(t_mask)
         attention_masks.append(torch.ones(len(t_ids)))
         labels.append(ls)
         label_masks.append(torch.ones(len(ls)))
+        gold_label_masks.append(gl_mask)
 
     return pad_sequence(token_ids, batch_first=True, padding_value=pad_token).long(), \
         pad_sequence(token_masks, batch_first=True, padding_value=0).bool(), \
         pad_sequence(attention_masks, batch_first=True, padding_value=0).bool(), \
         pad_sequence(labels, batch_first=True, padding_value=pad_label).long(), \
-        pad_sequence(label_masks, batch_first=True, padding_value=0).bool()
+        pad_sequence(label_masks, batch_first=True, padding_value=0).bool(), \
+        pad_sequence(gold_label_masks, batch_first=True, padding_value=0).bool()
 
 
 class SubTokenDataset(Dataset):  # need to somehow implement gold labels
@@ -183,10 +188,8 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 
             if len(tokens) > desired_seq_len:
                 logging.warning('Extra long sentence detected!')
+                # skipping as cutting may lead to broken entities
                 continue
-                # TODO
-                # tokens = tokens[: (max_seq_length - special_token_count)]
-                # label_ids = label_ids[: (max_seq_length - special_token_count)]
 
             if len(tokens) < desired_seq_len:
                 added_context = desired_seq_len - len(tokens)
@@ -224,7 +227,6 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
             yield tuple(token_ids), tuple(token_mask), tuple(labels)
 
 
-# TODO: add gold label mask for BOND
 def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
                              max_seq_length: int) -> SubTokenDataset:
 
@@ -251,7 +253,13 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         tags_dict = load_tags_dict(dataset_name)
 
-        # token ids, token_mask, label ids
+        def create_entity_mask(entities: Iterable[Entity], final_len: int) -> Tuple[bool]:
+            mask = [False] * final_len
+            for entity_start, _ in entities:
+                mask[entity_start] = True
+            return tuple(mask)
+
+        # list of (token ids, token_mask, label ids, gold label mask)
         examples: List[Example] = []
         extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length)
         iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
@@ -265,11 +273,12 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
             added_entities_count = int(len(gold_entities) * add_gold)
             entities_to_add = gold_entities[:added_entities_count]
+            gold_entities_mask = create_entity_mask(entities_to_add, original_len)
 
             merged_entities = merge_entity_lists(high_priority_entities=entities_to_add, low_priority_entities=distant_entities)
             labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=original_len)
 
-            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels)))
+            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_entities_mask)))
 
         # convert to tensors and build dataset
         dataset = SubTokenDataset(examples, token_pad=tokenizer.pad_token_id)
@@ -299,7 +308,8 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
         # token ids, token_mask, label ids
         examples: List[Example] = []
         for token_ids, token_mask, labels in extract_ids_and_masks(json_dataset, tokenizer, max_seq_length):
-            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels)))
+            gold_label_mask = (False,) * len(labels)  # this loader does not add any gold labels
+            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_label_mask)))
 
         # convert to tensors and build dataset
         dataset = SubTokenDataset(examples, token_pad=tokenizer.pad_token_id)

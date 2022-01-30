@@ -5,6 +5,7 @@ from typing import List
 
 import torch
 from torch import softmax
+from torch.distributions.constraints import one_hot
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
@@ -20,7 +21,6 @@ except ImportError:
 
 class TrainingFramework(Enum):
     BOND = 'bond'
-    NLL = 'nll'  # TODO
     SUPERVISED = 'supervised'
 
 
@@ -38,7 +38,7 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
     for batch in tqdm(eval_dataloader, desc=f"Evaluating on {dataset_type.value} dataset", leave=False):
         batch = tuple(t.to(args.device) for t in batch)
         with torch.no_grad():
-            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
                       "labels": labels, 'label_mask': label_mask}
             outputs = model(**inputs)
@@ -76,6 +76,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
+    num_labels = len(load_tags_dict(dataset))
 
     if args.steps_per_epoch == -1 and args.gradient_accumulation_steps == -1:
         raise ValueError('Cannot deduce number of steps per epoch! Set gradient_accumulation_steps or steps_per_epoch!')
@@ -130,7 +131,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             continue
 
         batch = tuple(t.to(args.device) for t in batch)
-        token_ids, token_mask, attention_mask, labels, label_mask = batch
+        token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
         inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
                   "labels": labels, 'label_mask': label_mask}
 
@@ -167,7 +168,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             global_batch += 1
 
             batch = tuple(t.to(args.device) for t in batch)
-            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
                       "labels": labels, 'label_mask': label_mask}
 
@@ -228,7 +229,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             batch = tuple(t.to(args.device) for t in batch)
 
             # Using current teacher to update the label
-            token_ids, token_mask, attention_mask, labels, label_mask = batch
+            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask}
             with torch.no_grad():
                 outputs = self_training_teacher_model(**inputs)
@@ -242,10 +243,12 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
                 else:
                     pred_labels = softmax(predictions, dim=-1)
 
-            _threshold = args.label_keep_threshold  # TODO: keep entities with respect to entropy?
+            _threshold = args.label_keep_threshold
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
 
-            inputs = {**inputs, **{"labels": pred_labels, "label_mask": label_mask & teacher_mask}}
+            pred_labels[gold_label_mask] = one_hot(labels[gold_label_mask], num_labels)
+
+            inputs = {**inputs, **{"labels": pred_labels, "label_mask": (label_mask & teacher_mask) | gold_label_mask}}
 
             model.train()
             outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
@@ -275,13 +278,6 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     tb_writer.close()
 
     return model, global_step, tr_loss / global_step
-
-
-def train_nll(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
-              tb_writer: SummaryWriter):
-    """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
-    # TODO
-    pass
 
 
 def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
@@ -344,7 +340,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
             continue
 
         batch = tuple(t.to(args.device) for t in batch)
-        token_ids, token_mask, attention_mask, labels, label_mask = batch
+        token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
         inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
                   "labels": labels, 'label_mask': label_mask}
 
@@ -416,8 +412,6 @@ def train(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: Data
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
     if training_framework == TrainingFramework.BOND:
         return train_bond(args, model, dataset, dataset_type, tokenizer, tb_writer)
-    elif training_framework == TrainingFramework.NLL:
-        return train_nll(args, model, dataset, dataset_type, tokenizer, tb_writer)
     elif training_framework == TrainingFramework.SUPERVISED:
         args.self_training_epochs = 0
         return train_supervised(args, model, dataset, dataset_type, tokenizer, tb_writer)

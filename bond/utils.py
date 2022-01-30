@@ -10,6 +10,8 @@ from torch.nn.functional import pad
 from torch.optim import Optimizer
 from transformers import AdamW, PreTrainedModel, get_constant_schedule_with_warmup, get_linear_schedule_with_warmup
 
+from bond.data import Entity
+
 Scores = Dict[str, float]
 
 
@@ -17,9 +19,6 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-
-Entity = Tuple[int, Tuple[int, ...]]
 
 
 def extract_entities(labels: Iterable[int], tags_dict: Dict[str, int]) -> Iterable[Entity]:
