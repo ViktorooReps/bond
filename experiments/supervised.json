@@ -37,7 +37,7 @@
     "save_output": "logs/supervised-seq512-bs16/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=supervised-seq256-bs16",
+      "--experiment_name=supervised-seq512-bs16",
       "--dataset=conll03",
       "--dataset_type=gold/train",
       "--model_type=roberta",
@@ -103,7 +103,7 @@
     "save_output": "logs/supervised-seq512-bs32/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=supervised-seq256-bs32",
+      "--experiment_name=supervised-seq512-bs32",
       "--dataset=conll03",
       "--dataset_type=gold/train",
       "--model_type=roberta",
@@ -169,7 +169,7 @@
     "save_output": "logs/supervised-seq512-bs64/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=supervised-seq256-bs64",
+      "--experiment_name=supervised-seq512-bs64",
       "--dataset=conll03",
       "--dataset_type=gold/train",
       "--model_type=roberta",
