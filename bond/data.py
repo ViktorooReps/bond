@@ -118,7 +118,6 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
     sep_token = tokenizer.sep_token
     cls_token = tokenizer.cls_token
 
-    special_token_count = 2
     for document in json_dataset:
 
         def fetch_context(s_idx: int, l_context_size: int, r_context_size: int,
@@ -165,12 +164,12 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                     r_context = [sep_token] + tokenized_sent[:actual_context_size]
                 else:
                     next_context_size = actual_context_size - len(tokenized_sent)
-                    next_context, _ = fetch_context(s_idx - 1, 0, next_context_size, fixed=True)
+                    next_context, _ = fetch_context(s_idx + 1, 0, next_context_size, fixed=True)
                     r_context = [sep_token] + tokenized_sent + list(next_context)
 
             return tuple(l_context), tuple(r_context)
 
-        desired_seq_len = max_seq_length - special_token_count
+        desired_seq_len = max_seq_length - 2  # for cls and sep tokens
 
         for sent_idx, sent in enumerate(document):
             words = sent['str_words']
