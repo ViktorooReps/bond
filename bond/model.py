@@ -153,6 +153,8 @@ class BERTHead(nn.Module):
                 assert raveled_gold_labels.shape == raveled_predicted_labels.shape
 
                 raveled_mask = label_mask.contiguous().view(-1)
+                assert raveled_mask.shape == raveled_gold_labels.shape[:-1]
+
                 return loss_function(raveled_predicted_labels[raveled_mask], raveled_gold_labels[raveled_mask])
 
             if labels.shape != label_probs.shape:
