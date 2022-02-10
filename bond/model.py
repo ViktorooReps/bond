@@ -150,6 +150,8 @@ class BERTHead(nn.Module):
             def calculate_loss(loss_function: Callable[[Tensor, Tensor], Tensor]) -> Tensor:
                 raveled_predicted_labels = label_probs.contiguous().view(-1, self.num_labels)
                 raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
+                assert raveled_gold_labels.shape == raveled_predicted_labels.shape
+
                 raveled_mask = label_mask.contiguous().view(-1)
                 return loss_function(raveled_predicted_labels[raveled_mask], raveled_gold_labels[raveled_mask])
 

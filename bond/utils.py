@@ -275,5 +275,5 @@ def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Bool
 
 def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     labels[labels < 0] = 0
-    return one_hot(labels, num_labels)
+    return one_hot(labels, num_labels).float()
 
