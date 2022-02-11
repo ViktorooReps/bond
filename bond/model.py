@@ -147,9 +147,12 @@ class BERTHead(nn.Module):
         outputs = (label_probs,)
 
         if labels is not None:
+            use_soft_labels = (self.crf is not None) or (self_training and use_kldiv_loss)
+
             def calculate_loss(loss_function: Callable[[Tensor, Tensor], Tensor]) -> Tensor:
-                raveled_predicted_labels = label_probs.contiguous().view(-1, self.num_labels)
-                raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
+                view_params = (-1, self.num_labels) if use_soft_labels else (-1)
+                raveled_predicted_labels = label_probs.contiguous().view(*view_params)
+                raveled_gold_labels = labels.contiguous().view(*view_params)
                 assert raveled_gold_labels.shape == raveled_predicted_labels.shape
 
                 raveled_mask = label_mask.contiguous().view(-1)
@@ -157,8 +160,7 @@ class BERTHead(nn.Module):
 
                 return loss_function(raveled_predicted_labels[raveled_mask], raveled_gold_labels[raveled_mask])
 
-            need_soft_labels = (self.crf is not None) or (self_training and use_kldiv_loss)
-            if labels.shape != label_probs.shape and need_soft_labels:
+            if labels.shape != label_probs.shape and use_soft_labels:
                 # convert hard labels into one-hots
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
