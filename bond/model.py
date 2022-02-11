@@ -157,7 +157,8 @@ class BERTHead(nn.Module):
 
                 return loss_function(raveled_predicted_labels[raveled_mask], raveled_gold_labels[raveled_mask])
 
-            if labels.shape != label_probs.shape:
+            need_soft_labels = (self.crf is not None) or (self_training and use_kldiv_loss)
+            if labels.shape != label_probs.shape and need_soft_labels:
                 # convert hard labels into one-hots
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
