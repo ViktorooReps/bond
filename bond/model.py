@@ -150,7 +150,7 @@ class BERTHead(nn.Module):
             use_soft_labels = (self.crf is not None) or (self_training and use_kldiv_loss)
 
             def calculate_loss(loss_function: Callable[[Tensor, Tensor], Tensor]) -> Tensor:
-                view_params = (-1, self.num_labels) if use_soft_labels else (-1)
+                view_params = (-1, self.num_labels) if use_soft_labels else (-1,)
                 raveled_predicted_labels = label_probs.contiguous().view(*view_params)
                 raveled_gold_labels = labels.contiguous().view(*view_params)
                 assert raveled_gold_labels.shape == raveled_predicted_labels.shape
