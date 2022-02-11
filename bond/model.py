@@ -143,34 +143,27 @@ class BERTHead(nn.Module):
             label_probs = self.crf.marginal_probabilities(label_scores).transpose(0, 1)
         else:
             label_probs = softmax(label_scores, dim=-1)
+        log_probs = torch.log(label_probs)
 
         outputs = (label_probs,)
 
         if labels is not None:
-            use_soft_labels = (self.crf is not None) or (self_training and use_kldiv_loss)
-
-            def calculate_loss(loss_function: Callable[[Tensor, Tensor], Tensor]) -> Tensor:
-                view_params = (-1, self.num_labels) if use_soft_labels else (-1,)
-                raveled_predicted_labels = label_probs.contiguous().view(*view_params)
-                raveled_gold_labels = labels.contiguous().view(*view_params)
-                assert raveled_gold_labels.shape == raveled_predicted_labels.shape
-
-                raveled_mask = label_mask.contiguous().view(-1)
-                assert raveled_mask.shape == raveled_gold_labels.shape[:-1]
-
-                return loss_function(raveled_predicted_labels[raveled_mask], raveled_gold_labels[raveled_mask])
-
-            if labels.shape != label_probs.shape and use_soft_labels:
+            if labels.shape != label_probs.shape:
                 # convert hard labels into one-hots
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
+            raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
+            raveled_mask = label_mask.contiguous().view(-1)
+
             if self_training and use_kldiv_loss:
-                loss = calculate_loss(KLDivLoss(reduction='mean'))
+                raveled_log_probs = log_probs.contiguous().view(-1, self.num_labels)
+                loss = KLDivLoss(reduction='mean')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
             else:
                 if self.crf is not None:
                     loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask, reduction='token_mean')
                 else:
-                    loss = calculate_loss(CrossEntropyLoss())
+                    raveled_label_scores = label_scores.contiguous().view(-1, self.num_labels)
+                    loss = CrossEntropyLoss()(raveled_label_scores[raveled_mask], raveled_gold_labels[raveled_mask])
 
             outputs = (loss,) + outputs
 
