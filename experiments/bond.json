@@ -24,7 +24,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.8",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=5",
       "--seed=42"
@@ -55,7 +55,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.8",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=10",
       "--seed=42"
@@ -86,7 +86,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.8",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=20",
       "--seed=42"
@@ -117,7 +117,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.4",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=5",
       "--seed=42"
@@ -148,7 +148,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.4",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=10",
       "--seed=42"
@@ -179,7 +179,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.4",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=20",
       "--seed=42"
@@ -210,7 +210,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.2",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=5",
       "--seed=42"
@@ -241,7 +241,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.2",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=10",
       "--seed=42"
@@ -272,7 +272,7 @@
       "--ner_fit_epochs=1",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.2",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=20",
       "--seed=42"
@@ -303,7 +303,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.8",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=5",
       "--seed=42"
@@ -334,7 +334,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.8",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=10",
       "--seed=42"
@@ -365,7 +365,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.8",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=20",
       "--seed=42"
@@ -396,7 +396,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.4",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=5",
       "--seed=42"
@@ -427,7 +427,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.4",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=10",
       "--seed=42"
@@ -458,7 +458,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.4",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=20",
       "--seed=42"
@@ -489,7 +489,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.2",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=5",
       "--seed=42"
@@ -520,7 +520,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.2",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=10",
       "--seed=42"
@@ -551,7 +551,7 @@
       "--ner_fit_epochs=2",
       "--use_linear_scheduler",
       "--self_training_lr_proportion=0.2",
-      "--corect_frequency",
+      "--correct_frequency",
       "--use_kldiv_loss",
       "--self_training_epochs=20",
       "--seed=42"

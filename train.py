@@ -109,8 +109,10 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Calculate loss and label probabilities using MarginalCRF')
     parser.add_argument('--use_nll', action='store_true',
                         help='Use agreement loss to regularize model')
-    parser.add_argument('--agreement_strength', type=float, default=5.0)  # 1 to 20
-    parser.add_argument('--n_models', type=int, default=4)
+    parser.add_argument('--agreement_strength', type=float, default=5.0,
+                        help='NLL regularization coefficient')  # 1 to 20
+    parser.add_argument('--n_models', type=int, default=2,
+                        help='Number of models to use for NLL')
 
     # NER training parameters
     parser.add_argument('--ner_fit_epochs', default=1, type=int,
@@ -155,6 +157,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     logging.info('Arguments: ' + str(args))
 
+    amp_scaler = torch.cuda.amp.GradScaler()
+
     dataset = DatasetName(args.dataset)
     dataset_type = DatasetType(args.dataset_type)
 
@@ -177,14 +181,16 @@ def main(parser: argparse.ArgumentParser) -> Scores:
         return model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert,
                                            pooler=PoolingStrategy(args.pooler), subword_repr_size=args.subword_repr_size,
                                            add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
-                                           lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf)
+                                           lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf).to(device)
 
     # Training
     if args.use_nll:
-        model = NLLModel(model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
+        model = NLLModel(num_labels, model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
     else:
         model = model_generator()
-        model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer)
+
+    model = nn.DataParallel(model)
+    model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer, amp_scaler)
 
     # Evaluation
     results = evaluate(args, model, dataset, DatasetType.DISTANT, tokenizer)

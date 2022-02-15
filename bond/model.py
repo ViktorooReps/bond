@@ -265,8 +265,9 @@ class RobertaWithHead(BertPreTrainedModel):
 
 class NLLModel(nn.Module):
 
-    def __init__(self, model_generator: Callable[[], nn.Module], n_models: int = 4, agreement_strength: float = 5.0):
+    def __init__(self, num_labels: int, model_generator: Callable[[], nn.Module], n_models: int = 4, agreement_strength: float = 5.0):
         super().__init__()
+        self._num_labels = num_labels
         self._models = nn.ModuleList([model_generator() for _ in range(n_models)])
         self._agreement_strength = agreement_strength
         self._main_model_idx = 0
@@ -281,16 +282,18 @@ class NLLModel(nn.Module):
         n_models = len(self._models)
 
         # outputs are tuples of (loss, predicted label probs)
-        outputs = [model(*args, **kwargs, labels=labels) for model in self._models]
+        outputs = [model(*args, **kwargs, labels=labels)[:2] for model in self._models]  # [:2] because we only need loss and probs
         models_loss = sum(loss for loss, _ in outputs) / n_models
         models_avg_probs = sum(probs for _, probs in outputs) / n_models
 
-        raveled_models_avg_probs = models_avg_probs.contiguous().view(-1, self.num_labels)
+        raveled_models_avg_probs = models_avg_probs.contiguous().view(-1, self._num_labels)
         raveled_mask = label_mask.contiguous().view(-1)
         masked_avg_probs = raveled_models_avg_probs[raveled_mask]
 
+        raveled_probs = (probs.contiguous().view(-1, self._num_labels) for _, probs in outputs)
+
         kld_loss = KLDivLoss(reduction='mean')
-        agreement_loss = sum(kld_loss(probs[raveled_mask], masked_avg_probs) for _, probs in outputs) / n_models
+        agreement_loss = sum(kld_loss(probs[raveled_mask], masked_avg_probs) for probs in raveled_probs) / n_models
 
         loss = models_loss + self._agreement_strength * agreement_loss
         _, pred_labels = outputs[self._main_model_idx]

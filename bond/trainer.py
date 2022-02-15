@@ -1,11 +1,9 @@
-import math
 from copy import deepcopy
 from enum import Enum
 from typing import List
 
 import torch
 from torch import softmax
-from torch.distributions.constraints import one_hot
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
@@ -41,7 +39,8 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
             token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
                       "labels": labels, 'label_mask': label_mask}
-            outputs = model(**inputs)
+            with torch.cuda.amp.autocast():
+                outputs = model(**inputs)
 
             tmp_eval_loss, logits = outputs[:2]
             eval_loss += tmp_eval_loss.item()
@@ -67,7 +66,7 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 
 
 def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
-               tb_writer: SummaryWriter):
+               tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
     if args.add_gold_labels > 0.0 and dataset_type == DatasetType.DISTANT:
         train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length)
@@ -130,20 +129,26 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
                   "labels": labels, 'label_mask': label_mask}
 
         model.train()
-        outputs = model(**inputs, self_training=False)
+        with torch.cuda.amp.autocast():
+            outputs = model(**inputs, self_training=False)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
-        loss.backward()
+        amp_scaler.scale(loss).backward()
 
         if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            amp_scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-            optimizer.step()
+            amp_scaler.step(optimizer)
             scheduler.step()  # Update learning rate schedule
-            model.zero_grad()
+            optimizer.zero_grad()
+
+            amp_scaler.update()
 
     for ner_fit_epoch in range(ner_epochs):
+
+        total_batches = len(train_dataloader)
 
         epoch_iterator = tqdm(train_dataloader, desc=f'Fitting NER on {ner_fit_epoch + 1}/{ner_epochs} epoch', total=total_batches)
         for batch_idx, batch in enumerate(epoch_iterator):
@@ -156,20 +161,24 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
                       "labels": labels, 'label_mask': label_mask}
 
             model.train()
-            outputs = model(**inputs, self_training=False)
+            with torch.cuda.amp.autocast():
+                outputs = model(**inputs, self_training=False)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
-            loss.backward()
+            amp_scaler.scale(loss).backward()
 
             tr_loss += loss.item()
             if global_batch % gradient_accumulation_steps == 0:
+                amp_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-                optimizer.step()
+                amp_scaler.step(optimizer)
                 scheduler.step()  # Update learning rate schedule
-                model.zero_grad()
+                optimizer.zero_grad()
                 steps_from_last_log += 1
+
+                amp_scaler.update()
 
             if examples_from_last_log >= args.logging:
                 # Log metrics
@@ -218,12 +227,9 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
             predictions = outputs[0]
             if args.correct_frequency:
-                pred_labels = soft_frequency(logits=predictions, power=2, probs=self_training_teacher_model.returns_probs)
+                pred_labels = soft_frequency(logits=predictions, power=2, probs=True)
             else:
-                if self_training_teacher_model.returns_probs:
-                    pred_labels = predictions
-                else:
-                    pred_labels = softmax(predictions, dim=-1)
+                pred_labels = predictions
 
             _threshold = args.label_keep_threshold
             teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
@@ -233,22 +239,24 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             inputs = {**inputs, **{"labels": pred_labels, "label_mask": (label_mask & teacher_mask) | gold_label_mask}}
 
             model.train()
-            outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
+            with torch.cuda.amp.autocast():
+                outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
+            loss = loss / gradient_accumulation_steps
 
-            if gradient_accumulation_steps > 1:
-                loss = loss / gradient_accumulation_steps
-
-            loss.backward()
+            amp_scaler.scale(loss).backward()
 
             tr_loss += loss.item()
             if global_batch % gradient_accumulation_steps == 0:
+                amp_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-                optimizer.step()
+                amp_scaler.step(optimizer)
                 scheduler.step()  # Update learning rate schedule
-                model.zero_grad()
+                optimizer.zero_grad()
                 steps_from_last_log += 1
+
+                amp_scaler.update()
 
             if examples_from_last_log >= args.logging:
                 # Log metrics
@@ -265,7 +273,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
 
 def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
-                     tb_writer: SummaryWriter):
+                     tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs"""
 
     if args.add_gold_labels > 0.0 and dataset_type == DatasetType.DISTANT:
@@ -323,18 +331,22 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
                   "labels": labels, 'label_mask': label_mask}
 
         model.train()
-        outputs = model(**inputs, self_training=False)
+        with torch.cuda.amp.autocast():
+            outputs = model(**inputs, self_training=False)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
-        loss.backward()
+        amp_scaler.scale(loss).backward()
 
         if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            amp_scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-            optimizer.step()
+            amp_scaler.step(optimizer)
             scheduler.step()  # Update learning rate schedule
-            model.zero_grad()
+            optimizer.zero_grad()
+
+            amp_scaler.update()
 
     for ner_fit_epoch in range(ner_epochs):
 
@@ -352,20 +364,24 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
                       "labels": labels, 'label_mask': label_mask}
 
             model.train()
-            outputs = model(**inputs, self_training=False)
+            with torch.cuda.amp.autocast():
+                outputs = model(**inputs, self_training=False)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
-            loss.backward()
+            amp_scaler.scale(loss).backward()
 
             tr_loss += loss.item()
             if global_batch % gradient_accumulation_steps == 0:
+                amp_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-                optimizer.step()
+                amp_scaler.step(optimizer)
                 scheduler.step()  # Update learning rate schedule
-                model.zero_grad()
+                optimizer.zero_grad()
                 steps_from_last_log += 1
+
+                amp_scaler.update()
 
             if examples_from_last_log >= args.logging:
                 # Log metrics
@@ -380,12 +396,12 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
 
 
 def train(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, training_framework: TrainingFramework,
-          tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter):
+          tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
     if training_framework == TrainingFramework.BOND:
-        return train_bond(args, model, dataset, dataset_type, tokenizer, tb_writer)
+        return train_bond(args, model, dataset, dataset_type, tokenizer, tb_writer, amp_scaler)
     elif training_framework == TrainingFramework.SUPERVISED:
         args.self_training_epochs = 0
-        return train_supervised(args, model, dataset, dataset_type, tokenizer, tb_writer)
+        return train_supervised(args, model, dataset, dataset_type, tokenizer, tb_writer, amp_scaler)
     else:
         raise ValueError(f'Unsupported training framework {training_framework.value}!')
