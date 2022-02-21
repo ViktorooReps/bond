@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import sys
 import warnings
 from pathlib import Path
 from time import localtime, strftime
@@ -152,7 +153,9 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     if not log_dir.exists():
         os.makedirs(log_dir)
 
-    logging.basicConfig(format='[%(asctime)s] %(message)s', filename=os.path.join(log_dir, log_name), level=logging.INFO)
+    logging.basicConfig(format='[%(asctime)s] %(message)s',
+                        handlers=[logging.FileHandler(os.path.join(log_dir, log_name)), logging.StreamHandler(sys.stdout)],
+                        level=logging.INFO)
     tb_writer = SummaryWriter(os.path.join(tb_dir, run_name))
 
     logging.info('Arguments: ' + str(args))
