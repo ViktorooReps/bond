@@ -202,11 +202,14 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     results = evaluate(args, model, dataset, DatasetType.TRAIN, tokenizer)
     logging.info('Results on train: ' + str(results))
 
+    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+    logging.info('Results on valid: ' + str(results))
+
     results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
     logging.info('Results on test: ' + str(results))
 
-    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
-    logging.info('Results on valid: ' + str(results))
+    results = evaluate(args, model, dataset, DatasetType.TEST_CORRECTED, tokenizer)
+    logging.info('Results on corrected test: ' + str(results))
 
     return results
 

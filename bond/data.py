@@ -24,6 +24,7 @@ class DatasetType(Enum):
     WEIGHED = 'distant/weighed'
     TRAIN = 'gold/train'
     VALID = 'gold/valid'
+    TEST_CORRECTED = 'gold/test_corrected'
     TEST = 'gold/test'
 
 

@@ -6,6 +6,10 @@ The CoNLL-2003 shared task data files contain four columns separated by a single
 
 For more details see https://www.clips.uantwerpen.be/conll2003/ner/ and https://www.aclweb.org/anthology/W03-0419
 
+## Corrected test set
+
+Annotation errors in CoNLL-2003 dataset were estimated to be around 5% of the whole dataset by Zihan Wang et al. [CrossWeigh: Training Named Entity Tagger from Imperfect Annotations](https://arxiv.org/abs/1909.01441) (2019). They also released the corrected version of test set that is used in this repository.
+
 ## Distant labels
 
 Distant labels were provided by Liang et al. [BOND: Bert-Assisted Open-Domain Named Entity Recognition with Distant Supervision](https://arxiv.org/abs/2006.15509) (2020)
