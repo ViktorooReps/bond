@@ -153,20 +153,25 @@ def create_folds(sentence_entities, folds, random_seed):
     return info
 
 
-def main(input_files, output_folder, folds, schema, dataset_name):
+def main(train_files, dev_file, output_folder, folds, schema, dataset_name):
     if os.path.exists(output_folder):
         print(f"Output folder {output_folder} exists, exiting...")
         sys.exit(1)
     os.makedirs(output_folder, exist_ok=True)
-    for input_file in input_files:
+    for input_file in train_files:
         if not os.path.exists(input_file):
             print(f"Input file {input_file} does not exist, exiting...")
             sys.exit(1)
+    if not os.path.exists(dev_file):
+        print(f"Dev file {dev_file} does not exist, exiting...")
+        sys.exit(1)
     assert folds > 0
 
     all_data = []
-    for input_file in input_files:
+    for input_file in train_files:
         all_data.extend(load_dataset(input_file, DatasetName(dataset_name), schema))
+
+    dev_data = load_dataset(dev_file, DatasetName(dataset_name), schema)
 
     sentence_entities = [list(map(lambda x: x['surface'], sent_label_to_entity(tokens, labels)))
                          for tokens, labels in all_data]
@@ -191,6 +196,12 @@ def main(input_files, output_folder, folds, schema, dataset_name):
                     f.write(f'{token}\t{label}\n')
                 f.write('\n')
 
+        with open(os.path.join(output_folder, f'fold-{i}', 'dev.txt'), 'w') as f:
+            for sent in dev_data:
+                for token, label in zip(*sent):
+                    f.write(f'{token}\t{label}\n')
+                f.write('\n')
+
     with open(os.path.join(output_folder, 'info.json'), 'w') as f:
         json.dump(info, f, indent=2)
 
@@ -198,9 +209,11 @@ def main(input_files, output_folder, folds, schema, dataset_name):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # input files, separate with space, will concat them together
-    parser.add_argument('--input_files', nargs='+', required=True)
+    parser.add_argument('--train_files', nargs='+', required=True)
     # output folder, will create per-fold folder in it
     parser.add_argument('--output_folder', required=True)
+    # dev file
+    parser.add_argument('--dev_file', type=str, required=True)
     # number of folds to make
     parser.add_argument('--folds', type=int, default=10)
     # label typing schema
@@ -209,4 +222,4 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='conll03', choices=[dataset.value for dataset in DatasetName])
     args = parser.parse_args()
     print(vars(args))
-    main(args.input_files, args.output_folder, args.folds, args.schema, args.dataset)
+    main(args.train_files, args.dev_file, args.output_folder, args.folds, args.schema, args.dataset)

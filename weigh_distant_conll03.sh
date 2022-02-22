@@ -10,7 +10,8 @@ export PYTHONPATH=.
 # creating splits
 for splits in $(seq 1 1 3); do
     SPLIT_FOLDER=${DATA_FOLDER_PREFIX}/split-${splits}
-    python crossweigh/split.py --input_files ${CONLL03_TRAIN_FILE} ${CONLL03_DEV_FILE} \
+    python crossweigh/split.py --train_files ${CONLL03_TRAIN_FILE} \
+                               --dev_file ${CONLL03_DEV_FILE} \
                                --output_folder ${SPLIT_FOLDER} \
                                --schema iob \
 		                           --folds 10
@@ -19,8 +20,10 @@ done
 # training each split/fold
 for splits in $(seq 1 1 3); do
     for folds in $(seq 0 1 9); do
+        SPLIT_FOLDER=${DATA_FOLDER_PREFIX}/split-${splits}
         FOLD_FOLDER=split-${splits}/fold-${folds}
         python crossweigh/flair_scripts/flair_ner.py --folder_name ${FOLD_FOLDER} \
+                                                     --dev_file ${SPLIT_FOLDER}/dev.txt \
                                                      --data_folder_prefix ${DATA_FOLDER_PREFIX} \
                                                      --model_folder_prefix ${MODEL_FOLDER_PREFIX}
     done

@@ -10,6 +10,7 @@ from sequence_tagger_with_weights import WeightedSequenceTagger
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--folder_name', required=True)
+parser.add_argument('--dev_file', required=True)
 parser.add_argument('--include_weight', action='store_true')
 parser.add_argument('--data_folder_prefix')
 parser.add_argument('--model_folder_prefix')
@@ -29,7 +30,8 @@ if args.include_weight:
 # print(column_format)
 corpus: Corpus = NLPTaskDataFetcher.load_column_corpus(data_folder,
                                                        column_format=column_format,
-                                                       tag_to_biloes="ner")
+                                                       tag_to_biloes="ner",
+                                                       dev_file=args.dev_file)
 
 tag_type = 'ner'
 
