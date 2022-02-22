@@ -3,3 +3,4 @@ numpy~=1.19.5
 tqdm~=4.62.3
 tensorboardX~=2.4.1
 transformers~=4.13.0
+flair~=0.10
