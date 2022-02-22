@@ -1,6 +1,6 @@
-torch==1.4.1
-numpy~=1.19.5
+flair==0.7.0
+torch==1.4.0
 tqdm~=4.62.3
 tensorboardX~=2.4.1
 transformers~=4.13.0
-flair==0.7.0
+numpy
