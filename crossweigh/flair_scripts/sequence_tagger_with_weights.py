@@ -1,7 +1,7 @@
 from flair.models import SequenceTagger
 from flair.models.sequence_tagger_model import pad_tensors
 import torch
-from typing import List
+from typing import List, Tuple
 import flair
 from flair.data import Sentence
 
@@ -9,9 +9,10 @@ from flair.data import Sentence
 class WeightedSequenceTagger(SequenceTagger):
     def _calculate_loss(
         self, features: torch.tensor, sentences: List[Sentence]
-    ) -> float:
+    ) -> Tuple[float, int]:
 
         lengths: List[int] = [len(sentence.tokens) for sentence in sentences]
+        label_count = sum(lengths)
 
         tag_list: List = []
         weight_list: List[float] = []
@@ -41,7 +42,7 @@ class WeightedSequenceTagger(SequenceTagger):
 
             weight_list = torch.tensor(weight_list, device=flair.device)
             score = score * weight_list
-            return score.mean()
+            return score.mean(), label_count
 
         else:
             score = 0
@@ -54,4 +55,4 @@ class WeightedSequenceTagger(SequenceTagger):
                     sentence_feats, sentence_tags
                 )
             score /= len(features)
-            return score
+            return score, label_count
