@@ -61,7 +61,7 @@ trainer: ModelTrainer = ModelTrainer(tagger, corpus)
 trainer.train(model_folder,
               max_epochs=150,
               monitor_test=True,
-              train_with_dev=True)
+              train_with_dev=False)
 
 
 def get_tokens_and_labels(sentence):
