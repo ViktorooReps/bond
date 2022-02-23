@@ -62,7 +62,7 @@ def load_dataset_from_column(path, schema='bio'):
                             labels = iob2bio(labels)
                         elif schema == 'iobes':
                             labels = iobes2bio(labels)
-                        validate_bio(labels)
+                        # validate_bio(labels)
                     sentences.append((tokens, labels))
                 tokens = []
                 labels = []
