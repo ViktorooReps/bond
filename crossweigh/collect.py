@@ -24,6 +24,7 @@ def load_from_splits(paths, original_test_filename, model_predicted_filename):
 
 
 def form_weighted_train_set(train_files, train_file_schema, eps, mistake_count):
+    print(f'forming weighed train set from {train_files}')
     for train_file in train_files:
         assert os.path.exists(train_file)
     train_set = []
@@ -45,6 +46,7 @@ def main(split_folders, train_files, train_file_schema, output_weighted_train_fi
     paths = []
     for split_folder in split_folders:
         paths.extend(glob.glob(os.path.join(split_folder, 'fold-*')))
+    print(f'found {paths} folds')
     sentence_potential_mistake_count = load_from_splits(paths, 'test.bio', model_predicted_filename)
     weighted_train_set = form_weighted_train_set(train_files, train_file_schema, eps, sentence_potential_mistake_count)
     with open(output_weighted_train_file, 'w') as f:
