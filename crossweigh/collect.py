@@ -2,7 +2,7 @@ import argparse
 import os
 import glob
 from collections import defaultdict
-from split import load_dataset_from_column
+from split import load_dataset
 
 
 # compares `original_test_filename` with `model_predicted_filename` under all paths, and merge the results
@@ -14,8 +14,8 @@ def load_from_splits(paths, original_test_filename, model_predicted_filename):
         model_predicted = os.path.join(path, model_predicted_filename)
         assert os.path.exists(original_test)
         assert os.path.exists(model_predicted)
-        original_test = load_dataset_from_column(original_test)
-        model_predicted = load_dataset_from_column(model_predicted, schema="none")  # since there may be invalid label sequences.
+        original_test = load_dataset(original_test)
+        model_predicted = load_dataset(model_predicted, schema="none")  # since there may be invalid label sequences.
         for (original_sentence, original_labels), (model_sentence, model_labels) in zip(original_test, model_predicted):
             assert ' '.join(original_sentence) == ' '.join(model_sentence)
             if ' '.join(original_labels) != ' '.join(model_labels):
@@ -29,7 +29,7 @@ def form_weighted_train_set(train_files, train_file_schema, eps, mistake_count):
         assert os.path.exists(train_file)
     train_set = []
     for train_file in train_files:
-        train_set.extend(load_dataset_from_column(train_file, schema=train_file_schema))
+        train_set.extend(load_dataset(train_file, schema=train_file_schema))
 
     weighted_train_set = []
     for sentence, labels in train_set:

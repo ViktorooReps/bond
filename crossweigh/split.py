@@ -89,7 +89,7 @@ def load_dataset_from_json(json_file: str, tag_to_id: Dict[str, int]) -> List[Tu
     return sentences
 
 
-def load_dataset(dataset_file: str, dataset_name: DatasetName, schema: str) -> List[Tuple[List[str], List[str]]]:
+def load_dataset(dataset_file: str, dataset_name: DatasetName = DatasetName.CONLL2003, schema: str = 'none') -> List[Tuple[List[str], List[str]]]:
     if dataset_file.endswith('.json'):
         return load_dataset_from_json(dataset_file, load_tags_dict(dataset_name))
 
