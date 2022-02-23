@@ -11,6 +11,7 @@ import torch
 from torch import LongTensor, BoolTensor, FloatTensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
+from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
 from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels
@@ -125,7 +126,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
     sep_token = tokenizer.sep_token
     cls_token = tokenizer.cls_token
 
-    for document in json_dataset:
+    for document in tqdm(json_dataset, leave=False):
 
         def fetch_context(s_idx: int, l_context_size: int, r_context_size: int,
                           *, fixed: bool = False) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
