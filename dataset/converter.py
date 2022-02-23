@@ -76,5 +76,5 @@ def add_weights(json_file_name: str, weighted_file_name: str, weighted_json_file
             assert tuple(orig_sent['str_words']) == tuple(weighted_sent)
             orig_sent['weight'] = weight
 
-    with open(weighted_json_file_name) as jf:
+    with open(weighted_json_file_name, 'w') as jf:
         json.dump(json_dataset, jf)
