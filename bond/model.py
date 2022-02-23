@@ -168,7 +168,7 @@ class BERTHead(nn.Module):
 
             if self_training and use_kldiv_loss:
                 raveled_log_probs = log_probs.contiguous().view(-1, self.num_labels)
-                tok_wise_loss: Tensor = KLDivLoss(reduction='none')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
+                tok_wise_loss: Tensor = KLDivLoss(reduction='batchmean')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
                 loss = torch.mean(tok_wise_loss * raveled_tok_weights[raveled_mask])
             else:
                 if self.crf is not None:
