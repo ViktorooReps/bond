@@ -93,7 +93,7 @@ def load_dataset(dataset_file: str, dataset_name: DatasetName = DatasetName.CONL
     if dataset_file.endswith('.json'):
         return load_dataset_from_json(dataset_file, load_tags_dict(dataset_name))
 
-    load_dataset_from_column(dataset_file, schema)
+    return load_dataset_from_column(dataset_file, schema)
 
 
 # given tokens, labels, extract list of spans of entities as (TYPE, START inc, END exc, SURFACE)
