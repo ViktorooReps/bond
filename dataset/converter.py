@@ -2,6 +2,7 @@ import json
 from typing import List
 
 from bond.data import load_tags_dict, DatasetName
+from crossweigh.split import load_dataset_from_column
 
 
 def old_to_new_format():
@@ -57,3 +58,23 @@ def conll03_raw_to_json(raw_file_name: str, json_file_name: str) -> None:
 
     with open(json_file_name, 'w') as json_file:
         json.dump(json_dataset, json_file)
+
+
+def add_weights(json_file_name: str, weighted_file_name: str, weighted_json_file_name: str) -> None:
+    with open(json_file_name) as jf:
+        json_dataset = json.load(jf)
+
+    def weighted_sentences_iterator():
+        sentences = load_dataset_from_column(weighted_file_name)
+        for tokens, weights in sentences:
+            assert all(weight == weights[0] for weight in weights)
+            yield tokens, weights[0]
+
+    iterator = weighted_sentences_iterator()
+    for doc in json_dataset:
+        for orig_sent, (weighted_sent, weight) in zip(doc, iterator):
+            assert tuple(orig_sent['str_words']) == tuple(weighted_sent)
+            orig_sent['weight'] = weight
+
+    with open(weighted_json_file_name) as jf:
+        json.dump(json_dataset, jf)
