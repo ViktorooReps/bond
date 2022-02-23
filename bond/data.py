@@ -5,10 +5,10 @@ from enum import Enum
 from functools import partial
 from pathlib import Path
 from random import shuffle
-from typing import Dict, List, Tuple, Iterable, Callable, Iterator, Any
+from typing import Dict, List, Tuple, Iterable, Callable, Iterator, Any, Optional
 
 import torch
-from torch import LongTensor, BoolTensor
+from torch import LongTensor, BoolTensor, FloatTensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
@@ -16,6 +16,7 @@ from transformers import PreTrainedTokenizer
 from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels
 
 PAD_LABEL_ID = -1
+DEFAULT_WEIGHT = 1.0
 Entity = Tuple[int, Tuple[int, ...]]
 
 
@@ -63,47 +64,51 @@ def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
     return label_extensions
 
 
-# (token ids, token mask, labels, gold label mask)
-Example = Tuple[LongTensor, BoolTensor, LongTensor, BoolTensor]
+# (token ids, token mask, labels, gold label mask, weight (optional))
+Example = Tuple[LongTensor, BoolTensor, LongTensor, BoolTensor, Optional[float]]
 
-# (tok ids, tok mask, attention mask, labels, label mask, gold label mask)
-BertExample = Tuple[LongTensor, BoolTensor, BoolTensor, LongTensor, BoolTensor, BoolTensor]
+# (tok ids, tok mask, attention mask, labels, label mask, gold label mask, weight)
+BertExample = Tuple[LongTensor, BoolTensor, BoolTensor, LongTensor, BoolTensor, BoolTensor, FloatTensor]
 
 
-def bert_collate_fn(batch: Iterable[Example], pad_token, pad_label) -> BertExample:
+def bert_collate_fn(batch: Iterable[Example], pad_token: int, pad_label: int, default_weight: float) -> BertExample:
     token_ids = []
     token_masks = []
     attention_masks = []
     labels = []
     label_masks = []
     gold_label_masks = []
+    sent_weights = []
 
-    for t_ids, t_mask, ls, gl_mask in batch:
+    for t_ids, t_mask, ls, gl_mask, weight in batch:
         token_ids.append(t_ids)
         token_masks.append(t_mask)
         attention_masks.append(torch.ones(len(t_ids)))
         labels.append(ls)
         label_masks.append(torch.ones(len(ls)))
         gold_label_masks.append(gl_mask)
+        sent_weights.append(weight if weight is not None else default_weight)
 
     return pad_sequence(token_ids, batch_first=True, padding_value=pad_token).long(), \
         pad_sequence(token_masks, batch_first=True, padding_value=0).bool(), \
         pad_sequence(attention_masks, batch_first=True, padding_value=0).bool(), \
         pad_sequence(labels, batch_first=True, padding_value=pad_label).long(), \
         pad_sequence(label_masks, batch_first=True, padding_value=0).bool(), \
-        pad_sequence(gold_label_masks, batch_first=True, padding_value=0).bool()
+        pad_sequence(gold_label_masks, batch_first=True, padding_value=0).bool(), \
+        torch.tensor(sent_weights).float()
 
 
 class SubTokenDataset(Dataset):
 
-    def __init__(self, examples: Iterable[Example], token_pad: int, label_pad: int = PAD_LABEL_ID):
+    def __init__(self, examples: Iterable[Example], token_pad: int, label_pad: int = PAD_LABEL_ID, default_weight: float = DEFAULT_WEIGHT):
         self._examples = tuple(examples)
         self._token_pad = token_pad
         self._label_pad = label_pad
+        self._default_weight = default_weight
 
     @property
     def collate_fn(self) -> Callable:
-        return partial(bert_collate_fn, pad_token=self._token_pad, pad_label=self._label_pad)
+        return partial(bert_collate_fn, pad_token=self._token_pad, pad_label=self._label_pad, default_weight=self._default_weight)
 
     def __len__(self) -> int:
         return len(self._examples)
@@ -114,8 +119,8 @@ class SubTokenDataset(Dataset):
 
 def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                           tokenizer: PreTrainedTokenizer,
-                          max_seq_length: int) -> Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]]:
-    """Creates generator that outputs (token_ids, token_mask, labels) from json dataset"""
+                          max_seq_length: int) -> Iterator[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], Optional[float]]]:
+    """Creates generator that outputs (token_ids, token_mask, labels, weight) from json dataset"""
 
     sep_token = tokenizer.sep_token
     cls_token = tokenizer.cls_token
@@ -176,6 +181,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
         for sent_idx, sent in enumerate(document):
             words = sent['str_words']
             labels = sent['tags']
+            weight = sent.get('weight', None)
 
             tokens = []
             token_mask = []
@@ -225,7 +231,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 
             token_ids: List[int] = tokenizer.convert_tokens_to_ids(tokens)
 
-            yield tuple(token_ids), tuple(token_mask), tuple(labels)
+            yield tuple(token_ids), tuple(token_mask), tuple(labels), weight
 
 
 def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
@@ -264,7 +270,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         examples: List[Example] = []
         extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length)
         iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
-        for (token_ids, token_mask, gold_labels), (_, _, distant_labels) in iterator:
+        for (token_ids, token_mask, gold_labels, weight), (_, _, distant_labels) in iterator:
             assert len(gold_labels) == len(distant_labels)
             original_len = len(gold_labels)
 
@@ -279,7 +285,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             merged_entities = merge_entity_lists(high_priority_entities=entities_to_add, low_priority_entities=distant_entities)
             labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=original_len)
 
-            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_entities_mask)))
+            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_entities_mask), weight))
 
         # convert to tensors and build dataset
         dataset = SubTokenDataset(examples, token_pad=tokenizer.pad_token_id)
@@ -308,9 +314,9 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
 
         # token ids, token_mask, label ids
         examples: List[Example] = []
-        for token_ids, token_mask, labels in extract_ids_and_masks(json_dataset, tokenizer, max_seq_length):
+        for token_ids, token_mask, labels, weight in extract_ids_and_masks(json_dataset, tokenizer, max_seq_length):
             gold_label_mask = (False,) * len(labels)  # this loader does not add any gold labels
-            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_label_mask)))
+            examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_label_mask), weight))
 
         # convert to tensors and build dataset
         dataset = SubTokenDataset(examples, token_pad=tokenizer.pad_token_id)

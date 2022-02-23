@@ -102,13 +102,14 @@ class BERTHead(nn.Module):
 
     def forward(self, seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Optional[BoolTensor] = None,
                 labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
-                self_training: bool = False, use_kldiv_loss: bool = False):
+                seq_weights: Optional[FloatTensor] = None, self_training: bool = False, use_kldiv_loss: bool = False):
         """Returns (loss), marginal tag distribution, label mask
 
         loss is returned only when labels are given
         label_mask is returned because it might change"""
 
         seq_lens = tuple(seq_lens)
+        batch_size, seq_len, num_features = seq_repr.shape
 
         if self.subword_repr_size > 0:
             # extract subwords for each entity
@@ -148,22 +149,35 @@ class BERTHead(nn.Module):
         outputs = (label_probs,)
 
         if labels is not None:
+            # convert seq_weights to token weights
+            if seq_weights is None:
+                seq_weights = torch.ones(batch_size)
+                tok_weights = torch.ones_like(labels)
+            else:
+                seq_weights = seq_weights.reshape(batch_size, 1)
+                tok_weights = seq_weights.repeat(1, seq_len)
+
             if labels.shape != label_probs.shape:
                 # convert hard labels into one-hots
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
             raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
+            raveled_tok_weights = tok_weights.contiguous().view(-1)
             raveled_mask = label_mask.contiguous().view(-1)
 
             if self_training and use_kldiv_loss:
                 raveled_log_probs = log_probs.contiguous().view(-1, self.num_labels)
-                loss = KLDivLoss(reduction='mean')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
+                tok_wise_loss: Tensor = KLDivLoss(reduction='none')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
+                loss = torch.mean(tok_wise_loss * raveled_tok_weights[raveled_mask])
             else:
                 if self.crf is not None:
-                    loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask, reduction='token_mean')
+                    batch_loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask, reduction='none')
+                    loss = (batch_loss * seq_weights).sum() / label_mask.float().sum()
                 else:
                     raveled_label_scores = label_scores.contiguous().view(-1, self.num_labels)
-                    loss = CrossEntropyLoss()(raveled_label_scores[raveled_mask], raveled_gold_labels[raveled_mask])
+                    tok_wise_loss: Tensor = CrossEntropyLoss(reduction='none')(raveled_label_scores[raveled_mask],
+                                                                               raveled_gold_labels[raveled_mask])
+                    loss = torch.mean(tok_wise_loss * raveled_tok_weights[raveled_mask])
 
             outputs = (loss,) + outputs
 
@@ -233,7 +247,7 @@ class RobertaWithHead(BertPreTrainedModel):
     def forward(self, input_ids: Tensor, token_mask: BoolTensor, attention_mask: Optional[Tensor] = None,
                 token_type_ids: Optional[Tensor] = None, position_ids: Optional[Tensor] = None, head_mask: Optional[Tensor] = None,
                 inputs_embeds: Optional[Tensor] = None, labels: Optional[Tensor] = None, label_mask: Optional[Tensor] = None,
-                self_training: bool = False, use_kldiv_loss: bool = False):
+                seq_weights: Optional[Iterable[float]] = None, self_training: bool = False, use_kldiv_loss: bool = False):
 
         seq_lens = [mask.sum() for mask in attention_mask]
 
@@ -251,12 +265,12 @@ class RobertaWithHead(BertPreTrainedModel):
 
         # outputs: final_embedding, pooler_output, (hidden_states), (attentions)
 
-        final_embedding = outputs['last_hidden_state']
-        all_layers_sequence_outputs = outputs['hidden_states']
+        final_embedding = outputs.last_hidden_state
+        all_layers_sequence_outputs = outputs.hidden_states
         pooled_embedding = POOLERS[self.pooler](all_layers_sequence_outputs)
         head_outputs = self.head(pooled_embedding, seq_lens=seq_lens, token_mask=token_mask,
                                  labels=labels, label_mask=label_mask,
-                                 self_training=self_training, use_kldiv_loss=use_kldiv_loss)  # (loss), scores
+                                 seq_weights=seq_weights, self_training=self_training, use_kldiv_loss=use_kldiv_loss)  # (loss), scores
 
         outputs = head_outputs + (final_embedding,) + outputs[2:]
 
