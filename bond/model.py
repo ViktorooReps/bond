@@ -109,7 +109,6 @@ class BERTHead(nn.Module):
         label_mask is returned because it might change"""
 
         seq_lens = tuple(seq_lens)
-        batch_size, seq_len, num_features = seq_repr.shape
 
         if self.subword_repr_size > 0:
             # extract subwords for each entity
@@ -129,6 +128,8 @@ class BERTHead(nn.Module):
         else:
             # get first subword of each word
             seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
+
+        batch_size, seq_len, num_features = seq_repr.shape
 
         if self.lstm is not None:
             seq_repr = self.dropout(seq_repr)
@@ -152,7 +153,7 @@ class BERTHead(nn.Module):
             # convert seq_weights to token weights
             if seq_weights is None:
                 seq_weights = torch.ones(batch_size)
-                tok_weights = torch.ones_like(labels)
+                tok_weights = torch.ones(batch_size, seq_len)
             else:
                 seq_weights = seq_weights.reshape(batch_size, 1)
                 tok_weights = seq_weights.repeat(1, seq_len)

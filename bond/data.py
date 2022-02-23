@@ -240,9 +240,15 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
     cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name, f'seq{max_seq_length}'])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
+    logging.info(f'Fetching transformed {dataset_name.value} with {add_gold} gold entities...')
+
     if cached_dataset_file.exists():
+        logging.info(f'Found cached version {cached_dataset_file}!')
+
         dataset: SubTokenDataset = torch.load(cached_dataset_file)
     else:
+        logging.info(f'Cached version wasn\'t found, creating {cached_dataset_file}...')
+
         gold_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.TRAIN.value + '.json'))
         distant_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.DISTANT.value + '.json'))
 
@@ -293,6 +299,8 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         # cache built dataset
         torch.save(dataset, cached_dataset_file)
 
+    logging.info('Dataset loaded!')
+
     return dataset
 
 
@@ -302,9 +310,15 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
     cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, f'seq{max_seq_length}'])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
+    logging.info(f'Fetching {dataset_name.value} of type {dataset_type.value}...')
+
     if cached_dataset_file.exists():
+        logging.info(f'Found cached version {cached_dataset_file}!')
+
         dataset: SubTokenDataset = torch.load(cached_dataset_file)
     else:
+        logging.info(f'Cached version wasn\'t found, creating {cached_dataset_file}...')
+
         dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, dataset_type.value + '.json'))
         if not dataset_file.exists():
             raise ValueError(f'{dataset_file} does not exists!')
@@ -323,5 +337,7 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
 
         # cache built dataset
         torch.save(dataset, cached_dataset_file)
+
+    logging.info('Dataset loaded!')
 
     return dataset
