@@ -31,7 +31,7 @@ export PYTHONPATH=.
 
 # collecting results and forming a weighted train set.
 python crossweigh/collect.py --split_folders ${DATA_FOLDER_PREFIX}/split-* \
-                             --train_files $CONLL03_TRAIN_FILE $CONLL03_DEV_FILE \
-                             --train_file_schema iob \
+                             --train_files $CONLL03_TRAIN_FILE \
+                             --train_file_schema none \
                              --output ${DATA_FOLDER_PREFIX}/${WEIGHED_MODEL_FOLDER_NAME}/train.bio
 
