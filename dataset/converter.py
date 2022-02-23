@@ -65,7 +65,7 @@ def add_weights(json_file_name: str, weighted_file_name: str, weighted_json_file
         json_dataset = json.load(jf)
 
     def weighted_sentences_iterator():
-        sentences = load_dataset_from_column(weighted_file_name)
+        sentences = load_dataset_from_column(weighted_file_name, schema='none')
         for tokens, weights in sentences:
             assert all(weight == weights[0] for weight in weights)
             yield tokens, weights[0]
