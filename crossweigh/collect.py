@@ -16,6 +16,8 @@ def load_from_splits(paths, original_test_filename, model_predicted_filename):
         assert os.path.exists(model_predicted)
         original_test = load_dataset(original_test)
         model_predicted = load_dataset(model_predicted, schema="none")  # since there may be invalid label sequences.
+        print(original_test[:5])
+        print(model_predicted[:5])
         for (original_sentence, original_labels), (model_sentence, model_labels) in zip(original_test, model_predicted):
             assert ' '.join(original_sentence) == ' '.join(model_sentence)
             if ' '.join(original_labels) != ' '.join(model_labels):
