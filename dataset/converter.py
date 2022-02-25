@@ -1,6 +1,8 @@
 import json
 from typing import List
 
+import numpy as np
+
 from bond.data import load_tags_dict, DatasetName
 from crossweigh.split import load_dataset_from_column
 
@@ -78,3 +80,20 @@ def add_weights(json_file_name: str, weighted_file_name: str, weighted_json_file
 
     with open(weighted_json_file_name, 'w') as jf:
         json.dump(json_dataset, jf)
+
+
+def normalize_weights(weighed_json_file_name: str, normalized_json_file_name: str) -> None:
+    with open(weighed_json_file_name) as wjf:
+        weighed_dataset = json.load(wjf)
+
+    weights = np.array([sent['weight'] for doc in weighed_dataset for sent in doc])
+    mean_weight = weights.mean()
+    norm_weights = weights / mean_weight
+
+    weight_generator = (weight for weight in norm_weights)
+    for doc in weighed_dataset:
+        for sent, norm_weight in zip(doc, weight_generator):
+            sent['weight'] = norm_weight
+
+    with open(normalized_json_file_name, 'w') as njf:
+        json.dump(weighed_dataset, njf)

@@ -24,6 +24,7 @@ Entity = Tuple[int, Tuple[int, ...]]
 class DatasetType(Enum):
     DISTANT = 'distant/train'
     WEIGHED = 'distant/weighed'
+    NORMALIZED = 'distant/normalized'
     TRAIN = 'gold/train'
     VALID = 'gold/valid'
     TEST_CORRECTED = 'gold/test_corrected'
