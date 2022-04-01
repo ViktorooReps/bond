@@ -37,7 +37,7 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
         with torch.no_grad():
             token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight}
+                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
             with torch.cuda.amp.autocast():
                 outputs = model(**inputs)
 
@@ -125,7 +125,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
         batch: BertExample = tuple(t.to(args.device) for t in batch)
         token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
         inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                  "labels": labels, 'label_mask': label_mask, 'seq_weights': weight}
+                  "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
 
         model.train()
         with torch.cuda.amp.autocast():
@@ -157,7 +157,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             batch: BertExample = tuple(t.to(args.device) for t in batch)
             token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight}
+                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
 
             model.train()
             with torch.cuda.amp.autocast():
@@ -218,9 +218,10 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
             batch: BertExample = tuple(t.to(args.device) for t in batch)
 
-            # Using current teacher to update the label
+            # Using current teacher to update the labels
             token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask}
+            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
+                      "gold_label_mask": gold_label_mask}
             with torch.no_grad():
                 outputs = self_training_teacher_model(**inputs)
 
@@ -328,7 +329,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
         batch: BertExample = tuple(t.to(args.device) for t in batch)
         token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
         inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                  "labels": labels, 'label_mask': label_mask, 'seq_weights': weight}
+                  "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
 
         model.train()
         with torch.cuda.amp.autocast():
@@ -361,7 +362,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
             batch: BertExample = tuple(t.to(args.device) for t in batch)
             token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
             inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight}
+                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
 
             model.train()
             with torch.cuda.amp.autocast():
