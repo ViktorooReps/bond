@@ -278,7 +278,25 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         examples: List[Example] = []
         extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length)
         iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
-        for (token_ids, token_mask, gold_labels, weight), (_, _, distant_labels) in iterator:
+
+        all_token_ids = []
+        all_token_masks = []
+        all_weights = []
+        # tuples of sentence idx and entity
+        all_gold_entities: List[Tuple[int, Entity]] = []
+        all_distant_entities: List[Tuple[int, Entity]] = []
+        for sent_idx, ((token_ids, token_mask, gold_labels, weight), (_, _, distant_labels, _)) in enumerate(iterator):
+            all_token_ids.append(token_ids)
+            all_token_masks.append(token_mask)
+            all_weights.append(weight)
+
+            gold_entities = list(extract_entities(gold_labels, tags_dict))
+            distant_entities = list(extract_entities(distant_labels, tags_dict))
+            all_gold_entities.extend(zip(range(len(gold_entities)), gold_entities))
+            all_distant_entities.extend(zip(range(len(distant_entities)), distant_entities))
+
+            # TODO
+        for (token_ids, token_mask, gold_labels, weight), (_, _, distant_labels, _) in iterator:
             assert len(gold_labels) == len(distant_labels)
             original_len = len(gold_labels)
 

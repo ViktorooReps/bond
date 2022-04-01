@@ -300,7 +300,7 @@ class RobertaWithHead(BertPreTrainedModel):
         return outputs  # (loss), scores, final_embedding, (hidden_states), (attentions)
 
 
-class NLLModel(nn.Module):
+class CoregulatedModel(nn.Module):
 
     def __init__(self, num_labels: int, model_generator: Callable[[], nn.Module], n_models: int = 4, agreement_strength: float = 5.0):
         super().__init__()

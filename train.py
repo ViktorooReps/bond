@@ -11,7 +11,7 @@ from torch import nn
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel
 
 from bond.data import DatasetName, DatasetType, load_tags_dict
-from bond.model import PoolingStrategy, RobertaWithHead, NLLModel
+from bond.model import PoolingStrategy, RobertaWithHead, CoregulatedModel
 from bond.trainer import TrainingFramework, evaluate, train
 from bond.utils import Scores, set_seed
 
@@ -110,7 +110,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of LSTM layers')
     parser.add_argument('--add_crf', action='store_true',
                         help='Calculate loss and label probabilities using MarginalCRF')
-    parser.add_argument('--use_nll', action='store_true',
+    parser.add_argument('--use_coregulation', action='store_true',
                         help='Use agreement loss to regularize model')
     parser.add_argument('--agreement_strength', type=float, default=5.0,
                         help='NLL regularization coefficient')  # 1 to 20
@@ -193,8 +193,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                                            lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf).to(device)
 
     # Training
-    if args.use_nll:
-        model = NLLModel(num_labels, model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
+    if args.use_coregulation:
+        model = CoregulatedModel(num_labels, model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
     else:
         model = model_generator()
 
