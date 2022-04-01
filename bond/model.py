@@ -308,7 +308,7 @@ class NLLModel(nn.Module):
         raveled_probs = (probs.contiguous().view(-1, self._num_labels) for _, probs in outputs)
 
         kld_loss = KLDivLoss(reduction='mean')
-        agreement_loss = sum(kld_loss(probs[raveled_mask], masked_avg_probs) for probs in raveled_probs) / n_models
+        agreement_loss = sum(kld_loss(torch.log(probs[raveled_mask]), masked_avg_probs) for probs in raveled_probs) / n_models
 
         loss = models_loss + self._agreement_strength * agreement_loss
         _, pred_labels = outputs[self._main_model_idx]

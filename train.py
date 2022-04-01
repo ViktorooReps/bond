@@ -60,6 +60,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Log every X examples seen.")
     parser.add_argument("--seed", type=int, default=42,
                         help="random seed for initialization")
+    parser.add_argument('--resfile', type=str, default=None,
+                        help='Append evaluation results to this file')
 
     # General training parameters
     parser.add_argument('--framework', default='bond',
@@ -145,6 +147,10 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     tb_dir = Path(os.path.join('tfboard', args.experiment_name))
     log_dir = Path(os.path.join('logs', args.experiment_name))
 
+    if args.resfile is not None:
+        with open(args.resfile, 'a') as res:
+            res.write(f'\n\nExperiment {args.experiment_name}\n')
+
     log_name = run_name + '.log'
 
     # Create output directory if needed
@@ -196,20 +202,29 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer, amp_scaler)
 
     # Evaluation
-    results = evaluate(args, model, dataset, DatasetType.DISTANT, tokenizer)
-    logging.info('Results on distant: ' + str(results))
-
     results = evaluate(args, model, dataset, DatasetType.TRAIN, tokenizer)
     logging.info('Results on train: ' + str(results))
+    if args.resfile is not None:
+        with open(args.resfile, 'a') as res:
+            res.write(f'Results on train: {results}\n')
 
     results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
     logging.info('Results on valid: ' + str(results))
+    if args.resfile is not None:
+        with open(args.resfile, 'a') as res:
+            res.write(f'Results on valid: {results}\n')
 
     results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
     logging.info('Results on test: ' + str(results))
+    if args.resfile is not None:
+        with open(args.resfile, 'a') as res:
+            res.write(f'Results on test: {results}\n')
 
     results = evaluate(args, model, dataset, DatasetType.TEST_CORRECTED, tokenizer)
     logging.info('Results on corrected test: ' + str(results))
+    if args.resfile is not None:
+        with open(args.resfile, 'a') as res:
+            res.write(f'Results on corrected test: {results}\n')
 
     return results
 
