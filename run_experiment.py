@@ -63,7 +63,7 @@ if __name__ == '__main__':
 
         for config_idx, run_config in enumerate(config):
             script_path = run_config['script']
-            script_args: List[str] = ['python', script_path] + list(map(str, run_config.get('args', [])))
+            script_args: List[str] = [python_cmd, script_path] + list(map(str, run_config.get('args', [])))
 
             print(f'\nRunning config №{config_idx + 1}...')
             print(f'\tscript name: {script_path}')
