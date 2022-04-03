@@ -41,6 +41,8 @@ def create_parser() -> ArgumentParser:
     # optional
     parser.add_argument('--sleep', type=int, default=10,
                         help='Sleep time in seconds between runs.')
+    parser.add_argument('--python3', action='store_true',
+                        help='Use python3 instead of python')
 
     return parser
 
@@ -49,6 +51,8 @@ if __name__ == '__main__':
     arg_parser = create_parser()
 
     args = arg_parser.parse_args()
+
+    python_cmd = 'python3' if args.python3 else 'python'
 
     for config_file_name in args.config:
 
