@@ -271,7 +271,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         def create_entity_mask(entities: Iterable[Entity], vector_len: int) -> Tuple[bool]:
             mask = [False] * vector_len
             for entity_start, _ in entities:
-                mask[entity_start] = True
+                mask[entity_start] = True  # TODO: index out of range
             return tuple(mask)
 
         # list of (token ids, token_mask, label ids, gold label mask)
