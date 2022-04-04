@@ -268,8 +268,8 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         tags_dict = load_tags_dict(dataset_name)
 
-        def create_entity_mask(entities: Iterable[Entity], final_len: int) -> Tuple[bool]:
-            mask = [False] * final_len
+        def create_entity_mask(entities: Iterable[Entity], vector_len: int) -> Tuple[bool]:
+            mask = [False] * vector_len
             for entity_start, _ in entities:
                 mask[entity_start] = True
             return tuple(mask)
@@ -282,9 +282,9 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         all_token_ids = []
         all_token_masks = []
         all_weights = []
+        all_distant_entities = []
         # tuples of sentence idx and entity
         all_gold_entities: List[Tuple[int, Entity]] = []
-        all_distant_entities: List[Tuple[int, Entity]] = []
         for sent_idx, ((token_ids, token_mask, gold_labels, weight), (_, _, distant_labels, _)) in enumerate(iterator):
             all_token_ids.append(token_ids)
             all_token_masks.append(token_mask)
@@ -293,23 +293,22 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             gold_entities = list(extract_entities(gold_labels, tags_dict))
             distant_entities = list(extract_entities(distant_labels, tags_dict))
             all_gold_entities.extend(zip(range(len(gold_entities)), gold_entities))
-            all_distant_entities.extend(zip(range(len(distant_entities)), distant_entities))
+            all_distant_entities.append(distant_entities)
 
-            # TODO
-        for (token_ids, token_mask, gold_labels, weight), (_, _, distant_labels, _) in iterator:
-            assert len(gold_labels) == len(distant_labels)
-            original_len = len(gold_labels)
+        shuffle(all_gold_entities)
+        added_entities_count = int(len(all_gold_entities) * add_gold)
+        entities_to_add = all_gold_entities[:added_entities_count]
+        all_added_entities = [[] for _ in range(len(all_token_ids))]  # create empty list of added entities for each sentence
+        for sentenced_entity in entities_to_add:
+            sent_idx, entity = sentenced_entity
+            all_added_entities[sent_idx].append(entity)
 
-            gold_entities = list(extract_entities(gold_labels, tags_dict))
-            distant_entities = list(extract_entities(distant_labels, tags_dict))
-            shuffle(gold_entities)
+        iterator = zip(all_token_ids, all_token_masks, all_weights, all_added_entities, all_distant_entities)
+        for token_ids, token_mask, weight, gold_entities, distant_entities in iterator:
+            gold_entities_mask = create_entity_mask(gold_entities, vector_len=len(token_mask))
 
-            added_entities_count = int(len(gold_entities) * add_gold)
-            entities_to_add = gold_entities[:added_entities_count]
-            gold_entities_mask = create_entity_mask(entities_to_add, original_len)
-
-            merged_entities = merge_entity_lists(high_priority_entities=entities_to_add, low_priority_entities=distant_entities)
-            labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=original_len)
+            merged_entities = merge_entity_lists(high_priority_entities=gold_entities, low_priority_entities=distant_entities)
+            labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=len(token_mask))
 
             examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_entities_mask), weight))
 
