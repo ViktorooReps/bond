@@ -129,7 +129,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
         model.train()
         with torch.cuda.amp.autocast():
-            outputs = model(**inputs, self_training=False)
+            outputs = model(**inputs, self_training=False, warmup=True)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
@@ -333,7 +333,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
 
         model.train()
         with torch.cuda.amp.autocast():
-            outputs = model(**inputs, self_training=False)
+            outputs = model(**inputs, self_training=False, warmup=True)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 

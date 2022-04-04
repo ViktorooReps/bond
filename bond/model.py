@@ -314,6 +314,7 @@ class CoregulatedModel(nn.Module):
             labels: Optional[Tensor] = None,
             label_mask: Optional[BoolTensor] = None,
             gold_label_mask: Optional[BoolTensor] = None,
+            warmup: bool = False,
             *args,
             **kwargs
     ):
@@ -334,16 +335,19 @@ class CoregulatedModel(nn.Module):
         # outputs are tuples of (loss, predicted label probs)
         outputs = [model(*args, **kwargs, labels=labels, label_mask=label_mask)[:2] for model in self._models]
         models_loss = sum(loss for loss, _ in outputs) / n_models
-        models_avg_probs = sum(probs for _, probs in outputs) / n_models
+        if not warmup:
+            models_avg_probs = sum(probs for _, probs in outputs) / n_models
 
-        raveled_models_avg_probs = models_avg_probs.contiguous().view(-1, self._num_labels)
-        raveled_mask = compute_kld_loss.contiguous().view(-1)
-        masked_avg_probs = raveled_models_avg_probs[raveled_mask]
+            raveled_models_avg_probs = models_avg_probs.contiguous().view(-1, self._num_labels)
+            raveled_mask = compute_kld_loss.contiguous().view(-1)
+            masked_avg_probs = raveled_models_avg_probs[raveled_mask]
 
-        raveled_probs = (probs.contiguous().view(-1, self._num_labels) for _, probs in outputs)
+            raveled_probs = (probs.contiguous().view(-1, self._num_labels) for _, probs in outputs)
 
-        kld_loss = KLDivLoss(reduction='mean')
-        agreement_loss = sum(kld_loss(torch.log(probs[raveled_mask]), masked_avg_probs) for probs in raveled_probs) / n_models
+            kld_loss = KLDivLoss(reduction='mean')
+            agreement_loss = sum(kld_loss(torch.log(probs[raveled_mask]), masked_avg_probs) for probs in raveled_probs) / n_models
+        else:
+            agreement_loss = 0
 
         loss = models_loss + self._agreement_strength * agreement_loss
         _, pred_labels = outputs[self._main_model_idx]

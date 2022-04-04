@@ -24,7 +24,7 @@
       "--use_coregulation",
       "--n_models=3",
       "--agreement_strength=200.0",
-      "--warmup_proportion=0.1",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=5",
       "--use_linear_scheduler",
       "--seed=42"
@@ -55,7 +55,7 @@
       "--use_coregulation",
       "--n_models=3",
       "--agreement_strength=200.0",
-      "--warmup_proportion=0.1",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=10",
       "--use_linear_scheduler",
       "--seed=42"
@@ -86,7 +86,7 @@
       "--use_coregulation",
       "--n_models=3",
       "--agreement_strength=200.0",
-      "--warmup_proportion=0.1",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=20",
       "--use_linear_scheduler",
       "--seed=42"
