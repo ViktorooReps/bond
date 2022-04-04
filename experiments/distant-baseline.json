@@ -21,6 +21,7 @@
       "--adam_epsilon=1e-06",
       "--adam_beta1=0.9",
       "--adam_beta2=0.999",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=6",
       "--use_linear_scheduler",
       "--seed=42"
@@ -49,6 +50,7 @@
       "--adam_epsilon=1e-06",
       "--adam_beta1=0.9",
       "--adam_beta2=0.999",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=6",
       "--use_linear_scheduler",
       "--seed=42"
@@ -77,6 +79,7 @@
       "--adam_epsilon=1e-06",
       "--adam_beta1=0.9",
       "--adam_beta2=0.999",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=6",
       "--use_linear_scheduler",
       "--seed=42"
@@ -105,6 +108,7 @@
       "--adam_epsilon=1e-06",
       "--adam_beta1=0.9",
       "--adam_beta2=0.999",
+      "--warmup_proportion=0.2",
       "--ner_fit_epochs=6",
       "--use_linear_scheduler",
       "--seed=42"
