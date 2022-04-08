@@ -86,6 +86,7 @@ def merge_entity_lists(high_priority_entities: Iterable[Entity], low_priority_en
                 lp_entity = lp_entities[lp_entity_idx]
                 lp_entity_start, lp_entity_end = entity_span(lp_entity)
 
+    chosen_entities.update(lp_entities[lp_entity_idx:])
     return tuple(sorted(chosen_entities, key=itemgetter(0)))
 
 

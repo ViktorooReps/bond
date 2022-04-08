@@ -284,12 +284,16 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         all_token_masks = []
         all_weights = []
         all_distant_entities = []
+        all_original_lengths = []
         # tuples of sentence idx and entity
         all_gold_entities: List[Tuple[int, Entity]] = []
         for sent_idx, ((token_ids, token_mask, gold_labels, weight), (_, _, distant_labels, _)) in enumerate(iterator):
+            assert len(gold_labels) == len(distant_labels)
+
             all_token_ids.append(token_ids)
             all_token_masks.append(token_mask)
             all_weights.append(weight)
+            all_original_lengths.append(len(gold_labels))
 
             gold_entities = list(extract_entities(gold_labels, tags_dict))
             distant_entities = list(extract_entities(distant_labels, tags_dict))
@@ -304,12 +308,12 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             sent_idx, entity = sentenced_entity
             all_added_entities[sent_idx].append(entity)
 
-        iterator = zip(all_token_ids, all_token_masks, all_weights, all_added_entities, all_distant_entities)
-        for token_ids, token_mask, weight, gold_entities, distant_entities in iterator:
-            gold_entities_mask = create_entity_mask(gold_entities, vector_len=len(token_mask))
+        iterator = zip(all_token_ids, all_token_masks, all_weights, all_added_entities, all_distant_entities, all_original_lengths)
+        for token_ids, token_mask, weight, gold_entities, distant_entities, orig_len in iterator:
+            gold_entities_mask = create_entity_mask(gold_entities, vector_len=orig_len)
 
             merged_entities = merge_entity_lists(high_priority_entities=gold_entities, low_priority_entities=distant_entities)
-            labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=len(token_mask))
+            labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=orig_len)
 
             examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_entities_mask), weight))
 
