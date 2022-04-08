@@ -135,7 +135,7 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 
             def tokenize_sent(sentence: Iterable[str]) -> Iterator[str]:
                 for w in sentence:
-                    yield from tokenizer(w)
+                    yield from tokenizer.tokenize(w)
 
             # check for document boundaries
 
@@ -270,8 +270,9 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         def create_entity_mask(entities: Iterable[Entity], vector_len: int) -> Tuple[bool]:
             mask = [False] * vector_len
-            for entity_start, _ in entities:
-                mask[entity_start] = True  # TODO: index out of range
+            for entity_start, entity_labels in entities:
+                for label_idx in range(len(entity_labels)):
+                    mask[entity_start + label_idx] = True
             return tuple(mask)
 
         # list of (token ids, token_mask, label ids, gold label mask)
@@ -292,7 +293,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
             gold_entities = list(extract_entities(gold_labels, tags_dict))
             distant_entities = list(extract_entities(distant_labels, tags_dict))
-            all_gold_entities.extend(zip(range(len(gold_entities)), gold_entities))
+            all_gold_entities.extend((sent_idx, entity) for entity in gold_entities)
             all_distant_entities.append(distant_entities)
 
         shuffle(all_gold_entities)

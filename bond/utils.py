@@ -1,4 +1,5 @@
 import random
+from operator import itemgetter
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -48,36 +49,44 @@ def extract_entities(labels: Iterable[int], tags_dict: Dict[str, int]) -> Iterab
         yield entity_idx, tuple(entity_labels)
 
 
+def entity_span(entity: Entity) -> Tuple[int, int]:
+    entity_start, labels = entity
+    entity_end = entity_start + len(labels)
+    return entity_start, entity_end
+
+
 def merge_entity_lists(high_priority_entities: Iterable[Entity], low_priority_entities: Iterable[Entity]) -> Tuple[Entity]:
-    hp_entities = set(high_priority_entities)
-    lp_entities = set(low_priority_entities)
+    # sort entities by their start index
+    hp_entities = sorted(set(high_priority_entities), key=itemgetter(0))
+    lp_entities = sorted(set(low_priority_entities), key=itemgetter(0))
 
-    coarse_merged_entities = list(hp_entities.union(lp_entities))
-    sorted_coarse_entities = sorted(coarse_merged_entities, key=lambda t: t[0])
+    def intersects(ent1: Entity, ent2: Entity) -> bool:
+        """Assumes entities are sorted"""
+        ent1_start, ent1_end = entity_span(ent1)
+        ent2_start, ent2_end = entity_span(ent2)
 
-    unwanted_entities = set()
+        return ent1_start <= ent2_start < ent1_end or ent2_start <= ent1_start < ent2_end
 
-    def check_collision(entity_idx: int) -> bool:
-        def collides(ent1: Entity, ent2: Entity) -> bool:
-            """[ent_start, ent_end)"""
-            ent1_start_pos, ent1_labels = ent1
-            ent1_end_pos = ent1_start_pos + len(ent1_labels)
+    chosen_entities = set(hp_entities)
+    if not len(lp_entities):
+        return tuple(sorted(chosen_entities, key=itemgetter(0)))
 
-            ent2_start_pos, _ = ent2
-            return ent1_end_pos <= ent2_start_pos
+    lp_entity_idx = 0
+    lp_entity = lp_entities[lp_entity_idx]
+    lp_entity_start, lp_entity_end = entity_span(lp_entity)
+    for hp_entity in hp_entities:
+        hp_entity_start, hp_entity_end = entity_span(hp_entity)
 
-        if entity_idx > 0 and collides(sorted_coarse_entities[entity_idx - 1], sorted_coarse_entities[entity_idx]):
-            return True
-        if entity_idx < len(sorted_coarse_entities) - 1 and collides(sorted_coarse_entities[entity_idx],
-                                                                     sorted_coarse_entities[entity_idx + 1]):
-            return True
-        return False
+        while lp_entity_idx < len(lp_entities) and lp_entity_start < hp_entity_end:
+            if not intersects(lp_entity, hp_entity):
+                chosen_entities.add(lp_entity)
 
-    for ent_idx, ent in enumerate(sorted_coarse_entities):
-        if ent in lp_entities and check_collision(ent_idx):
-            unwanted_entities.add(ent)
+            lp_entity_idx += 1
+            if lp_entity_idx < len(lp_entities):
+                lp_entity = lp_entities[lp_entity_idx]
+                lp_entity_start, lp_entity_end = entity_span(lp_entity)
 
-    return tuple(filter(lambda e: e not in unwanted_entities, sorted_coarse_entities))
+    return tuple(sorted(chosen_entities, key=itemgetter(0)))
 
 
 def convert_entities_to_labels(entities: Iterable[Entity], no_entity_label: int, vector_len: int) -> Tuple[int]:
@@ -89,9 +98,10 @@ def convert_entities_to_labels(entities: Iterable[Entity], no_entity_label: int,
                 raise ValueError('Entity collision detected!')
 
     for entity in entities:
-        entity_start, entity_labels = entity
-        entity_end = entity_start + len(entity_labels)
+        entity_start, entity_end = entity_span(entity)
         validate_entity(entity_start, entity_end)
+
+        _, entity_labels = entity
         for label_idx, label in zip(range(entity_start, entity_end), entity_labels):
             result[label_idx] = label
 
