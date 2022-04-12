@@ -315,6 +315,7 @@ class CoregulatedModel(nn.Module):
             label_mask: Optional[BoolTensor] = None,
             gold_label_mask: Optional[BoolTensor] = None,
             warmup: bool = False,
+            self_training: bool = False,
             *args,
             **kwargs
     ):
@@ -326,6 +327,9 @@ class CoregulatedModel(nn.Module):
 
         if gold_label_mask is None:
             gold_label_mask = torch.zeros(labels.shape, dtype=torch.bool)
+
+        if self_training:
+            return self._models[self._main_model_idx](*args, **kwargs, labels=labels, label_mask=label_mask)
 
         # do not compute kld loss for gold labels
         compute_kld_loss = ~gold_label_mask & label_mask
