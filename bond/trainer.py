@@ -197,6 +197,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
     # prepare scheduler for self training stage
     model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=0, end_lr_proportion=0)
+    model.prepare_for_self_training()
 
     # Self training
     for self_training_epoch in range(st_epochs):

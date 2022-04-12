@@ -1,4 +1,5 @@
 from enum import Enum
+from time import sleep
 from typing import Iterable, Optional, Tuple, Callable
 
 import torch
@@ -251,6 +252,9 @@ class RobertaWithHead(BertPreTrainedModel):
         for p in self.roberta.parameters():
             p.requires_grad = False
 
+    def prepare_for_self_training(self):
+        pass
+
     @property
     def returns_probs(self) -> bool:
         return self.head.returns_probs
@@ -308,6 +312,12 @@ class CoregulatedModel(nn.Module):
         self._models = nn.ModuleList([model_generator() for _ in range(n_models)])
         self._agreement_strength = agreement_strength
         self._main_model_idx = 0
+
+    def prepare_for_self_training(self):
+        self._models = nn.ModuleList([self._models[self._main_model_idx]])
+        self._main_model_idx = 0
+        torch.cuda.empty_cache()
+        sleep(10)
 
     def forward(
             self,
