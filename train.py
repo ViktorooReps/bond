@@ -198,7 +198,6 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     else:
         model = model_generator()
 
-    model = nn.DataParallel(model)
     model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer, amp_scaler)
 
     # Evaluation

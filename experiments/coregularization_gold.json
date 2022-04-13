@@ -36,7 +36,7 @@
     "save_output": "logs/coregularization-gold10/script_output.log",
     "args": [
       "--framework=supervised",
-      "--experiment_name=coregularization-gold5",
+      "--experiment_name=coregularization-gold10",
       "--resfile=res.txt",
       "--dataset=conll03",
       "--dataset_type=distant/train",
