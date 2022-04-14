@@ -202,10 +202,8 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     # Self training
     for self_training_epoch in range(st_epochs):
 
-        self_training_teacher_model = deepcopy(model)
-        self_training_teacher_model.eval()
-
         total_batches = len(train_dataloader)
+        batches_per_update = total_batches // args.updates
         epoch_iterator = tqdm(train_dataloader, desc=f'Self training on {self_training_epoch + 1}/{st_epochs} epoch', total=total_batches)
 
         for batch_idx, batch in enumerate(epoch_iterator):
@@ -213,6 +211,10 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             if batch_idx >= total_batches:
                 epoch_iterator.close()
                 continue
+
+            if batch_idx % batches_per_update == 0:
+                self_training_teacher_model = deepcopy(model)
+                self_training_teacher_model.eval()
 
             global_batch += 1
             examples_from_last_log += args.batch_size
