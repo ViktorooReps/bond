@@ -134,7 +134,9 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Do soft label frequency correction before choosing labels with threshold')
     parser.add_argument('--use_kldiv_loss', action='store_true',
                         help='Use KLDivLoss during self training')
-    parser.add_argument('--updates', type=int, default=1,
+    parser.add_argument('--start_updates', type=float, default=2.0,
+                        help='Update times for teacher model per epoch.')
+    parser.add_argument('--end_updates', type=float, default=1.0,
                         help='Update times for teacher model per epoch.')
 
     return parser

@@ -195,6 +195,15 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     args.bert_learning_rate *= args.self_training_lr_proportion
     args.head_learning_rate *= args.self_training_lr_proportion
 
+    st_batch = 0
+    total_st_batches = st_epochs * len(train_dataloader)
+    batches_since_update = 0
+
+    def get_batches_until_update():
+        completion = st_batch / total_st_batches
+        update_rate = (1 - completion) * args.start_updates + completion * args.end_updates
+        return update_rate * len(train_dataloader)
+
     # prepare scheduler for self training stage
     model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=0, end_lr_proportion=0)
     model.prepare_for_self_training()
@@ -203,7 +212,6 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     for self_training_epoch in range(st_epochs):
 
         total_batches = len(train_dataloader)
-        batches_per_update = total_batches // args.updates
         epoch_iterator = tqdm(train_dataloader, desc=f'Self training on {self_training_epoch + 1}/{st_epochs} epoch', total=total_batches)
 
         for batch_idx, batch in enumerate(epoch_iterator):
@@ -212,11 +220,13 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
                 epoch_iterator.close()
                 continue
 
-            if batch_idx % batches_per_update == 0:
+            if batches_since_update > get_batches_until_update():
                 self_training_teacher_model = deepcopy(model)
                 self_training_teacher_model.eval()
 
             global_batch += 1
+            st_batch += 1
+            batches_since_update += 1
             examples_from_last_log += args.batch_size
 
             batch: BertExample = tuple(t.to(args.device) for t in batch)
