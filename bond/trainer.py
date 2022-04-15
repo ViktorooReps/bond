@@ -1,3 +1,4 @@
+import logging
 from copy import deepcopy
 from enum import Enum
 from typing import List
@@ -221,8 +222,10 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
                 continue
 
             if batches_since_update > get_batches_until_update():
+                logging.info(f'Model updateed on batch {st_batch}/{total_st_batches}')
                 self_training_teacher_model = deepcopy(model)
                 self_training_teacher_model.eval()
+                batches_since_update = 0
 
             global_batch += 1
             st_batch += 1
