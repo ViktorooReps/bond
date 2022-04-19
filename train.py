@@ -7,10 +7,9 @@ from pathlib import Path
 from time import localtime, strftime
 
 import torch
-from torch import nn
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel
 
-from bond.data import DatasetName, DatasetType, load_tags_dict
+from bond.data import DatasetName, DatasetType, load_tags_dict, relabel_dataset
 from bond.model import PoolingStrategy, RobertaWithHead, CoregulatedModel
 from bond.trainer import TrainingFramework, evaluate, train
 from bond.utils import Scores, set_seed
@@ -62,6 +61,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="random seed for initialization")
     parser.add_argument('--resfile', type=str, default=None,
                         help='Append evaluation results to this file')
+    parser.add_argument('--relabel', action='store_true',
+                        help='If set, trained model will be used to relabel distant dataset')
 
     # General training parameters
     parser.add_argument('--framework', default='bond',
@@ -228,6 +229,9 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
             res.write(f'Results on corrected test: {results}\n')
+
+    if args.relabel:
+        relabel_dataset(args, model, dataset, tokenizer)
 
     return results
 

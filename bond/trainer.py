@@ -25,7 +25,8 @@ class TrainingFramework(Enum):
 def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer) -> Scores:
     eval_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
     eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.batch_size, collate_fn=eval_dataset.collate_fn)
+    batch_size = args.batch_size * 2
+    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=batch_size, collate_fn=eval_dataset.collate_fn)
 
     eval_loss = 0.0
     nb_eval_steps = 0

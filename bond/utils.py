@@ -11,7 +11,6 @@ from torch.nn.functional import pad, one_hot
 from torch.optim import Optimizer
 from transformers import AdamW, PreTrainedModel, get_constant_schedule_with_warmup, get_linear_schedule_with_warmup
 
-
 Entity = Tuple[int, Tuple[int, ...]]
 Scores = Dict[str, float]
 
@@ -287,4 +286,3 @@ def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Bool
 def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     labels[labels < 0] = 0
     return one_hot(labels, num_labels).float()
-

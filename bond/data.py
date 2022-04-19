@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from copy import deepcopy
 from enum import Enum
 from functools import partial
 from pathlib import Path
@@ -10,9 +11,9 @@ from typing import Dict, List, Tuple, Iterable, Callable, Iterator, Any, Optiona
 import torch
 from torch import LongTensor, BoolTensor, FloatTensor
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset, SequentialSampler
 from tqdm import tqdm
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels
 
@@ -29,6 +30,7 @@ class DatasetType(Enum):
     VALID = 'gold/valid'
     TEST_CORRECTED = 'gold/test_corrected'
     TEST = 'gold/test'
+    RELABELLED = 'distant/relabelled'
 
 
 class DatasetName(Enum):
@@ -255,10 +257,10 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
         distant_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.DISTANT.value + '.json'))
 
         if not gold_dataset_file.exists():
-            raise ValueError(f'{gold_dataset_file} does not exists!')
+            raise ValueError(f'{gold_dataset_file} does not exist!')
 
         if not distant_dataset_file.exists():
-            raise ValueError(f'{distant_dataset_file} does not exists!')
+            raise ValueError(f'{distant_dataset_file} does not exist!')
 
         with open(gold_dataset_file) as f:
             gold_json_dataset = json.load(f)
@@ -345,7 +347,7 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
 
         dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, dataset_type.value + '.json'))
         if not dataset_file.exists():
-            raise ValueError(f'{dataset_file} does not exists!')
+            raise ValueError(f'{dataset_file} does not exist!')
 
         with open(dataset_file) as f:
             json_dataset = json.load(f)
@@ -365,3 +367,57 @@ def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer
     logging.info('Dataset loaded!')
 
     return dataset
+
+
+def relabel_dataset(args, model: PreTrainedModel, dataset_name: DatasetName, tokenizer: PreTrainedTokenizer) -> None:
+    dataset = load_dataset(dataset_name, DatasetType.DISTANT, tokenizer, args.model_name, args.max_seq_length)
+    sampler = SequentialSampler(dataset)
+    batch_size = args.batch_size * 2
+    dataloader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, collate_fn=dataset.collate_fn)
+
+    original_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.DISTANT.value + '.json'))
+    if not original_dataset_file.exists():
+        raise ValueError(f'{original_dataset_file} does not exist!')
+
+    with open(original_dataset_file) as f:
+        json_dataset = json.load(f)
+
+    def json_dataloader() -> Iterable[dict]:
+        json_batch = []
+        for example in json_dataset:
+            json_batch.append(example)
+            if len(json_batch) == batch_size:
+                yield json_batch
+                json_batch = []
+        if len(json_batch):
+            yield json_batch
+
+    relabelled_json_dataset: List[List[dict]] = deepcopy(json_dataset)
+    doc_lengths = list(map(len, relabelled_json_dataset))
+    doc_idx = 0
+    example_idx = 0
+
+    model.eval()
+    for original_batch, batch in tqdm(zip(json_dataloader(), dataloader), desc=f"Relabelling dataset", leave=False, total=len(dataloader)):
+        batch: BertExample = tuple(t.to(args.device) for t in batch)
+        with torch.no_grad():
+            batch_token_ids, batch_token_mask, batch_attention_mask, batch_labels, batch_label_mask, batch_gold_label_mask, batch_weight = batch
+            inputs = {"input_ids": batch_token_ids, "token_mask": batch_token_mask, "attention_mask": batch_attention_mask,
+                      "labels": batch_labels, 'label_mask': batch_label_mask, 'seq_weights': batch_weight, "gold_label_mask": batch_gold_label_mask}
+            with torch.cuda.amp.autocast():
+                outputs = model(**inputs)
+
+            _, logits = outputs[:2]
+
+        batch_predicted_labels = torch.argmax(logits, dim=-1)
+
+        for predicted_labels, label_mask in zip(batch_predicted_labels, batch_label_mask):
+            relabelled_json_dataset[doc_idx][example_idx]['tags'] = predicted_labels[label_mask].tolist()
+            example_idx += 1
+            if example_idx >= doc_lengths[doc_idx]:
+                example_idx = 0
+                doc_idx += 1
+
+    relabelled_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.RELABELLED.value + '.json'))
+    with open(relabelled_dataset_file, 'w') as f:
+        json.dump(relabelled_json_dataset, f)
