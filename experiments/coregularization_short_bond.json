@@ -27,7 +27,7 @@
       "--warmup_proportion=0.2",
       "--ner_fit_epochs=3",
       "--use_linear_scheduler",
-      "--self_training_lr_proportion=0.2",
+      "--self_training_lr_proportion=0.4",
       "--correct_frequency",
       "--use_kldiv_loss",
       "--label_keep_threshold=0.9",
