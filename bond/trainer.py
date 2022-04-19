@@ -203,7 +203,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     def get_batches_until_update():
         completion = st_batch / total_st_batches
         update_rate = (1 - completion) * args.start_updates + completion * args.end_updates
-        return update_rate * len(train_dataloader)
+        return len(train_dataloader) / update_rate
 
     # prepare scheduler for self training stage
     model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=0, end_lr_proportion=0)

@@ -1,7 +1,13 @@
+from typing import Dict, Iterable
+
+import torch
+import pandas as pd
+import seaborn as sns
+from pandas import DataFrame
 from torch.utils.data import DataLoader
 from transformers import RobertaTokenizer
 
-from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict
+from bond.data import DatasetName, DatasetType, SubTokenDataset, load_dataset, load_tags_dict
 from bond.utils import ner_scores
 
 
@@ -21,3 +27,25 @@ def plot_distant_dataset_stats(dataset_name: DatasetName) -> None:
 
     stats = ner_scores(gold_labels, distant_labels, load_tags_dict(dataset_name))
     print(stats)  # TODO: do actual stats visuallization
+
+
+def score_cached_dataset(dataset_path: str, tokenizer_name: str, dataset_name: DatasetName) -> None:
+    tokenizer = RobertaTokenizer.from_pretrained(tokenizer_name)
+
+    distant_dataset: SubTokenDataset = torch.load(dataset_path)
+    gold_dataset = load_dataset(dataset_name, DatasetType.TRAIN, tokenizer, 'roberta-base', 128)
+
+    distant_labels = []
+    for _, _, _, labels, mask, _, _ in DataLoader(distant_dataset, batch_size=1, collate_fn=distant_dataset.collate_fn):
+        distant_labels.extend(labels.masked_select(mask > 0).tolist())
+
+    gold_labels = []
+    for _, _, _, labels, mask, _, _ in DataLoader(gold_dataset, batch_size=1, collate_fn=gold_dataset.collate_fn):
+        gold_labels.extend(labels.masked_select(mask > 0).tolist())
+
+    stats = ner_scores(gold_labels, distant_labels, load_tags_dict(dataset_name))
+    print(stats)
+
+
+def plot_losses(data: DataFrame) -> None:
+    sns.lineplot(data)

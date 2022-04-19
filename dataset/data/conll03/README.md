@@ -18,4 +18,23 @@ Labelling quality:
 
 | F1     | Precision | Recall | 
 |--------|-----------|--------|
-| 0.7096 | 0.8238    | 0.6233 |
+| 0.6750 | 0.7835    | 0.5929 |
+
+With 0.05 added gold entities:
+
+| F1     | Precision | Recall | 
+|--------|-----------|--------|
+| 0.6895 | 0.7936    | 0.6096 |
+
+With 0.10 added gold entities:
+
+| F1     | Precision | Recall | 
+|--------|-----------|--------|
+| 0.7044 | 0.8032    | 0.6273 |
+
+With 0.15 added gold entities:
+
+| F1     | Precision | Recall | 
+|--------|-----------|--------|
+| 0.7199 | 0.8136    | 0.6455 |
+
