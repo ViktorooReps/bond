@@ -198,9 +198,8 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
                 token_mask.extend([True] + [False] * (len(word_tokens) - 1))
 
             if len(tokens) > desired_seq_len:
-                logging.warning('Extra long sentence detected!')
                 # skipping as cutting may lead to broken entities
-                continue
+                raise ValueError('Extra long sentence detected!')
 
             if len(tokens) < desired_seq_len:
                 added_context = desired_seq_len - len(tokens)
@@ -382,23 +381,15 @@ def relabel_dataset(args, model: PreTrainedModel, dataset_name: DatasetName, tok
     with open(original_dataset_file) as f:
         json_dataset = json.load(f)
 
-    def json_dataloader() -> Iterable[dict]:
-        json_batch = []
-        for example in json_dataset:
-            json_batch.append(example)
-            if len(json_batch) == batch_size:
-                yield json_batch
-                json_batch = []
-        if len(json_batch):
-            yield json_batch
-
     relabelled_json_dataset: List[List[dict]] = deepcopy(json_dataset)
     doc_lengths = list(map(len, relabelled_json_dataset))
     doc_idx = 0
     example_idx = 0
 
+    tags_dict = load_tags_dict(dataset_name)
+
     model.eval()
-    for original_batch, batch in tqdm(zip(json_dataloader(), dataloader), desc=f"Relabelling dataset", leave=False, total=len(dataloader)):
+    for batch in tqdm(dataloader, desc=f"Relabelling dataset", leave=False, total=len(dataloader)):
         batch: BertExample = tuple(t.to(args.device) for t in batch)
         with torch.no_grad():
             batch_token_ids, batch_token_mask, batch_attention_mask, batch_labels, batch_label_mask, batch_gold_label_mask, batch_weight = batch
@@ -412,7 +403,13 @@ def relabel_dataset(args, model: PreTrainedModel, dataset_name: DatasetName, tok
         batch_predicted_labels = torch.argmax(logits, dim=-1)
 
         for predicted_labels, label_mask in zip(batch_predicted_labels, batch_label_mask):
-            relabelled_json_dataset[doc_idx][example_idx]['tags'] = predicted_labels[label_mask].tolist()
+            predicted_labels = predicted_labels[label_mask].tolist()
+
+            # clean up loose I- annotations
+            predicted_entities = tuple(extract_entities(predicted_labels, tags_dict))
+            predicted_labels = convert_entities_to_labels(predicted_entities, tags_dict['O'], len(predicted_labels))
+
+            relabelled_json_dataset[doc_idx][example_idx]['tags'] = predicted_labels
             example_idx += 1
             if example_idx >= doc_lengths[doc_idx]:
                 example_idx = 0

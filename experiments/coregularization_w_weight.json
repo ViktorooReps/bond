@@ -1,11 +1,11 @@
 [
   {
     "script": "train.py",
-    "save_output": "logs/coregularization-200-5ep/script_output.log",
+    "save_output": "logs/coregularization-weight7/script_output.log",
     "args": [
       "--framework=supervised",
       "--experiment_name=coregularization-200-5ep",
-      "--resfile=res.txt",
+      "--resfile=res.final.txt",
       "--dataset=conll03",
       "--dataset_type=distant/train",
       "--model_type=roberta",
@@ -21,6 +21,7 @@
       "--adam_epsilon=1e-06",
       "--adam_beta1=0.9",
       "--adam_beta2=0.999",
+      "--no_entity_weight=0.7",
       "--use_coregulation",
       "--n_models=3",
       "--agreement_strength=200.0",

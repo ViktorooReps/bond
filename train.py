@@ -111,6 +111,10 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of LSTM layers')
     parser.add_argument('--add_crf', action='store_true',
                         help='Calculate loss and label probabilities using MarginalCRF')
+    parser.add_argument('--no_entity_weight', default=1.0, type=float,
+                        help='Weight for tokens labelled as `O` class')
+
+    # Co-regulation parameters
     parser.add_argument('--use_coregulation', action='store_true',
                         help='Use agreement loss to regularize model')
     parser.add_argument('--agreement_strength', type=float, default=5.0,
@@ -195,7 +199,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
         return model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert,
                                            pooler=PoolingStrategy(args.pooler), subword_repr_size=args.subword_repr_size,
                                            add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
-                                           lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf).to(device)
+                                           lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf,
+                                           no_entity_weight=args.no_entity_weight).to(device)
 
     # Training
     if args.use_coregulation:

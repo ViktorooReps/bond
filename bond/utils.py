@@ -27,8 +27,13 @@ def extract_entities(labels: Iterable[int], tags_dict: Dict[str, int]) -> Iterab
     entity_start = {tag for tag in tags_dict if tag.startswith('B')}
     no_entity = {'O'}
 
+    def get_type(tag: str) -> str:
+        _, tag_type = tag.split('-')
+        return tag_type
+
     entity_labels = []
     entity_idx: Optional[int] = None
+    entity_type: Optional[str] = None
 
     for curr_idx, label in enumerate(labels):
         tag = labels_dict[label]
@@ -37,12 +42,21 @@ def extract_entities(labels: Iterable[int], tags_dict: Dict[str, int]) -> Iterab
                 yield entity_idx, tuple(entity_labels)
             entity_idx = curr_idx
             entity_labels = [label]
+            entity_type = get_type(tag)
         elif tag in no_entity:
             if entity_idx is not None:
                 yield entity_idx, tuple(entity_labels)
             entity_idx = None
+            entity_type = None
         else:
-            entity_labels.append(label)
+            if entity_idx is not None:
+                if get_type(tag) == entity_type:
+                    entity_labels.append(label)
+                else:
+                    if entity_idx is not None:
+                        yield entity_idx, tuple(entity_labels)
+                    entity_idx = None
+                    entity_type = None
 
     if entity_idx is not None:
         yield entity_idx, tuple(entity_labels)

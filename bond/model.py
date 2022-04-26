@@ -73,8 +73,19 @@ POOLERS = {
 
 class BERTHead(nn.Module):
 
-    def __init__(self, num_labels: int, hidden_size: int, dropout_prob: float, subword_repr_size: int = 0, add_lstm: bool = False,
-                 lstm_layers: int = 2, lstm_hidden: int = 128, lstm_dropout: float = 0.5, add_crf: bool = False):
+    def __init__(
+            self,
+            num_labels: int,
+            hidden_size: int,
+            dropout_prob: float,
+            subword_repr_size: int = 0,
+            add_lstm: bool = False,
+            lstm_layers: int = 2,
+            lstm_hidden: int = 128,
+            lstm_dropout: float = 0.5,
+            add_crf: bool = False,
+            no_entity_weight: float = 1.0
+    ):
         super().__init__()
 
         self.subword_repr_size = subword_repr_size
@@ -101,9 +112,19 @@ class BERTHead(nn.Module):
         else:
             self.crf = None
 
-    def forward(self, seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Optional[BoolTensor] = None,
-                labels: Optional[LongTensor] = None, label_mask: Optional[BoolTensor] = None,
-                seq_weights: Optional[FloatTensor] = None, self_training: bool = False, use_kldiv_loss: bool = False):
+        self.no_entity_weight = no_entity_weight
+
+    def forward(
+            self,
+            seq_repr: Tensor,
+            seq_lens: Iterable[int],
+            token_mask: Optional[BoolTensor] = None,
+            labels: Optional[LongTensor] = None,
+            label_mask: Optional[BoolTensor] = None,
+            seq_weights: Optional[FloatTensor] = None,
+            self_training: bool = False,
+            use_kldiv_loss: bool = False
+    ):
         """Returns (loss), marginal tag distribution, label mask
 
         loss is returned only when labels are given
@@ -167,19 +188,24 @@ class BERTHead(nn.Module):
             raveled_tok_weights = tok_weights.contiguous().view(-1)
             raveled_mask = label_mask.contiguous().view(-1)
 
+            not_entities = (torch.argmax(raveled_gold_labels, dim=-1) == 0)
+            label_weights = torch.ones_like(raveled_mask, dtype=torch.float)
+            label_weights[not_entities] = self.no_entity_weight if not self_training else 1.0
+
             if self_training and use_kldiv_loss:
                 raveled_log_probs = log_probs.contiguous().view(-1, self.num_labels)
                 tok_wise_loss: Tensor = KLDivLoss(reduction='batchmean')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
-                loss = torch.mean(tok_wise_loss * raveled_tok_weights[raveled_mask])
+                loss = torch.mean(tok_wise_loss * label_weights[raveled_mask] * raveled_tok_weights[raveled_mask])
             else:
                 if self.crf is not None:
+                    # TODO: no weighing for crf implemented yet
                     batch_loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask, reduction='none')
                     loss = (batch_loss * seq_weights).sum() / label_mask.float().sum()
                 else:
                     raveled_label_scores = label_scores.contiguous().view(-1, self.num_labels)
                     tok_wise_loss: Tensor = CrossEntropyLoss(reduction='none')(raveled_label_scores[raveled_mask],
                                                                                raveled_gold_labels[raveled_mask])
-                    loss = torch.mean(tok_wise_loss * raveled_tok_weights[raveled_mask])
+                    loss = torch.mean(tok_wise_loss * label_weights[raveled_mask] * raveled_tok_weights[raveled_mask])
 
             outputs = (loss,) + outputs
 
@@ -226,7 +252,8 @@ class RobertaWithHead(BertPreTrainedModel):
             lstm_hidden: int = 128,
             lstm_dropout: float = 0.5,
             head_dropout: float = 0.5,
-            add_crf: bool = False
+            add_crf: bool = False,
+            no_entity_weight: float = 1.0
     ):
 
         super().__init__(config)
@@ -239,7 +266,8 @@ class RobertaWithHead(BertPreTrainedModel):
         self.pooler = pooler
         self.head = BERTHead(num_labels=self.num_labels, hidden_size=hidden_size, dropout_prob=head_dropout,
                              subword_repr_size=subword_repr_size, add_lstm=add_lstm,
-                             lstm_hidden=lstm_hidden, lstm_layers=lstm_layers, lstm_dropout=lstm_dropout, add_crf=add_crf)
+                             lstm_hidden=lstm_hidden, lstm_layers=lstm_layers, lstm_dropout=lstm_dropout, add_crf=add_crf,
+                             no_entity_weight=no_entity_weight)
 
         if self.frozen_bert:
             self.freeze_bert()

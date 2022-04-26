@@ -3,4 +3,7 @@ torch==1.10.2
 tqdm~=4.62.3
 tensorboardX~=2.4.1
 transformers~=4.13.0
-numpy
+numpy~=1.19.5
+seaborn~=0.11.2
+pandas~=1.1.5
+nvitop~=0.5.4
