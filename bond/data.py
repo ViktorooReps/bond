@@ -238,12 +238,16 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
 
 
 def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                             max_seq_length: int) -> SubTokenDataset:
+                             max_seq_length: int, merge_relabelled: bool) -> SubTokenDataset:
+    if not merge_relabelled:
+        cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name, f'seq{max_seq_length}'])
+    else:
+        cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), 'w_relabelled', tokenizer_name, f'seq{max_seq_length}'])
 
-    cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name, f'seq{max_seq_length}'])
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
-    logging.info(f'Fetching transformed {dataset_name.value} with {add_gold} gold entities...')
+    logging.info(f'Fetching transformed {dataset_name.value} with {add_gold} gold entities'
+                 f'{" and relabelled entities" if merge_relabelled else ""}...')
 
     if cached_dataset_file.exists():
         logging.info(f'Found cached version {cached_dataset_file}!')
@@ -268,6 +272,7 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             distant_json_dataset = json.load(f)
 
         tags_dict = load_tags_dict(dataset_name)
+        extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length)
 
         def create_entity_mask(entities: Iterable[Entity], vector_len: int) -> Tuple[bool]:
             mask = [False] * vector_len
@@ -278,7 +283,6 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         # list of (token ids, token_mask, label ids, gold label mask)
         examples: List[Example] = []
-        extractor = partial(extract_ids_and_masks, tokenizer=tokenizer, max_seq_length=max_seq_length)
         iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
 
         all_token_ids = []
@@ -309,11 +313,33 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             sent_idx, entity = sentenced_entity
             all_added_entities[sent_idx].append(entity)
 
-        iterator = zip(all_token_ids, all_token_masks, all_weights, all_added_entities, all_distant_entities, all_original_lengths)
-        for token_ids, token_mask, weight, gold_entities, distant_entities, orig_len in iterator:
+        all_relabelled_entities = [[] for _ in range(len(all_token_ids))]  # create empty list of relabelled entities for each sentence
+        if merge_relabelled:
+            relabelled_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.RELABELLED.value + '.json'))
+            if not relabelled_dataset_file.exists():
+                raise ValueError(f'{relabelled_dataset_file} does not exist!')
+
+            with open(relabelled_dataset_file) as f:
+                relabelled_json_dataset = json.load(f)
+
+            for sent_idx, (_, _, relabelled_labels, _) in enumerate(extractor(relabelled_json_dataset)):
+                relabelled_entities = list(extract_entities(relabelled_labels, tags_dict))
+                all_relabelled_entities[sent_idx].extend(relabelled_entities)
+
+        iterator = zip(
+            all_token_ids,
+            all_token_masks,
+            all_weights,
+            all_added_entities,
+            all_distant_entities,
+            all_relabelled_entities,
+            all_original_lengths
+        )
+        for token_ids, token_mask, weight, gold_entities, distant_entities, relabelled_entities, orig_len in iterator:
             gold_entities_mask = create_entity_mask(gold_entities, vector_len=orig_len)
 
-            merged_entities = merge_entity_lists(high_priority_entities=gold_entities, low_priority_entities=distant_entities)
+            merged_entities = merge_entity_lists(high_priority_entities=relabelled_entities, low_priority_entities=distant_entities)
+            merged_entities = merge_entity_lists(high_priority_entities=gold_entities, low_priority_entities=merged_entities)
             labels = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=orig_len)
 
             examples.append((LongTensor(token_ids), BoolTensor(token_mask), LongTensor(labels), BoolTensor(gold_entities_mask), weight))

@@ -5,6 +5,7 @@ import subprocess
 import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, RawTextHelpFormatter
 from datetime import datetime
+from pathlib import Path
 from time import sleep
 from typing import List, Tuple
 
@@ -86,7 +87,12 @@ if __name__ == '__main__':
 
     python_cmd = 'python3' if args.python3 else 'python'
 
-    for config_file_name in args.config:
+    all_configs = []
+    glob_path = Path(os.getcwd())
+    for config_regex in args.config:
+        all_configs.extend(glob_path.glob(config_regex))
+
+    for config_file_name in all_configs:
 
         with open(config_file_name) as config_file:
             config: List[dict] = json.load(config_file)

@@ -107,6 +107,9 @@ class BERTHead(nn.Module):
         total_hidden_size = 2 * lstm_hidden if add_lstm else hidden_size + self.subword_repr_size
         self.hidden2labels = nn.Linear(total_hidden_size, num_labels)
 
+        nn.init.zeros_(self.hidden2labels.bias)
+        self.hidden2labels.bias.data[0] = 6  # make model biased towards 'O' label
+
         if add_crf:
             self.crf = MarginalCRF(num_labels)
         else:

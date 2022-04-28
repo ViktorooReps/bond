@@ -50,6 +50,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='One of ' + ', '.join(dataset_type.value for dataset_type in DatasetType))
     parser.add_argument('--add_gold_labels', default=0.0, type=float,
                         help='Add fraction of gold labels to distant dataset to simulate partial annotation.')
+    parser.add_argument('--add_relabelled_labels', action='store_true',
+                        help=f'Add labels from {DatasetType.RELABELLED.value} dataset.')
     parser.add_argument("--max_seq_length", default=128, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, "
                              "sequences shorter will be padded.")

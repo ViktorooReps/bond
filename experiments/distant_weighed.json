@@ -23,7 +23,7 @@
       "--adam_beta2=0.999",
       "--no_entity_weight=0.9",
       "--warmup_proportion=0.2",
-      "--ner_fit_epochs=5",
+      "--ner_fit_epochs=3",
       "--use_linear_scheduler",
       "--seed=42"
     ]
@@ -52,7 +52,7 @@
       "--adam_beta2=0.999",
       "--no_entity_weight=0.7",
       "--warmup_proportion=0.2",
-      "--ner_fit_epochs=5",
+      "--ner_fit_epochs=3",
       "--use_linear_scheduler",
       "--seed=42"
     ]
@@ -81,7 +81,7 @@
       "--adam_beta2=0.999",
       "--no_entity_weight=0.5",
       "--warmup_proportion=0.2",
-      "--ner_fit_epochs=5",
+      "--ner_fit_epochs=3",
       "--use_linear_scheduler",
       "--seed=42"
     ]
@@ -110,7 +110,7 @@
       "--adam_beta2=0.999",
       "--no_entity_weight=0.2",
       "--warmup_proportion=0.2",
-      "--ner_fit_epochs=5",
+      "--ner_fit_epochs=3",
       "--use_linear_scheduler",
       "--seed=42"
     ]
