@@ -213,6 +213,10 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer, amp_scaler)
 
     # Evaluation
+
+    train_dataset = f'{dataset.value}+{args.add_gold_labels}gold{"+relabelled" if args.add_relabelled_labels else ""}'
+    model_name = args.experiment_name
+
     results = evaluate(args, model, dataset, DatasetType.TRAIN, tokenizer)
     logging.info('Results on train: ' + str(results))
     if args.resfile is not None:
@@ -231,11 +235,20 @@ def main(parser: argparse.ArgumentParser) -> Scores:
         with open(args.resfile, 'a') as res:
             res.write(f'Results on test: {results}\n')
 
+    test_results = results
+
     results = evaluate(args, model, dataset, DatasetType.TEST_CORRECTED, tokenizer)
     logging.info('Results on corrected test: ' + str(results))
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
             res.write(f'Results on corrected test: {results}\n')
+
+    corr_results = results
+
+    with open('results.csv', 'a') as res:
+        res.write(f'{model_name},{train_dataset},'
+                  f'{test_results["f1"]},{test_results["precision"]},{test_results["recall"]},'
+                  f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]}\n')
 
     if args.relabel:
         relabel_dataset(args, model, dataset, tokenizer)
