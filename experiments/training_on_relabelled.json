@@ -1,10 +1,10 @@
 [
   {
     "script": "train.py",
-    "save_output": "logs/bond-trained-on-relabelled/script_output.log",
+    "save_output": "logs/bond-trained-on-relabelled-st5/script_output.log",
     "args": [
       "--framework=bond",
-      "--experiment_name=bond-trained-on-relabelled",
+      "--experiment_name=bond-trained-on-relabelled-st5",
       "--resfile=res.final.txt",
       "--dataset=conll03",
       "--dataset_type=distant/relabelled",
@@ -37,10 +37,10 @@
   },
   {
     "script": "train.py",
-    "save_output": "logs/bond-trained-on-relabelled/script_output.log",
+    "save_output": "logs/bond-trained-on-relabelled-st10/script_output.log",
     "args": [
       "--framework=bond",
-      "--experiment_name=bond-trained-on-relabelled",
+      "--experiment_name=bond-trained-on-relabelled-st10",
       "--resfile=res.final.txt",
       "--dataset=conll03",
       "--dataset_type=distant/relabelled",
