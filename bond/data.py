@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import pickle
 from copy import deepcopy
 from enum import Enum
 from functools import partial
@@ -237,16 +238,76 @@ def extract_ids_and_masks(json_dataset: Iterable[List[Dict[str, Any]]],
             yield tuple(token_ids), tuple(token_mask), tuple(labels), weight
 
 
-def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                             max_seq_length: int, merge_relabelled: bool) -> SubTokenDataset:
-    if not merge_relabelled:
-        cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), tokenizer_name, f'seq{max_seq_length}'])
-    else:
-        cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), 'w_relabelled', tokenizer_name, f'seq{max_seq_length}'])
+def get_dataset_entities(
+        dataset_name: DatasetName,
+        dataset_type: DatasetType,
+        tokenizer: PreTrainedTokenizer,
+        max_seq_length,
+        *,
+        fraction: float = 1.0
+) -> List[List[Entity]]:
+
+    cached_entities_file_name = '_'.join([dataset_name.value, dataset_type.value, str(fraction)]) + '.pkl'
+    cached_entities_file_path = Path(os.path.join('cache', 'entities', cached_entities_file_name))
+    if cached_entities_file_path.exists():
+        logging.info(f'Found cached version of entities {cached_entities_file_path}!')
+        with open(cached_entities_file_path, 'rb') as f:
+            return pickle.load(f)
+
+    logging.info(f'Cached version wasn\'t found, creating {cached_entities_file_path}...')
+
+    dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, dataset_type.value + '.json'))
+    if not dataset_file.exists():
+        raise ValueError(f'{dataset_file} does not exist!')
+
+    with open(dataset_file) as f:
+        json_dataset = json.load(f)
+
+    tags_dict = load_tags_dict(dataset_name)
+
+    all_entities: List[Tuple[int, Entity]] = []
+    for sent_idx, (_, _, labels, _) in enumerate(extract_ids_and_masks(json_dataset, tokenizer, max_seq_length=max_seq_length)):
+        entities = list(extract_entities(labels, tags_dict))
+        all_entities.extend((sent_idx, entity) for entity in entities)
+
+    shuffle(all_entities)
+    keep_entities_count = int(len(all_entities) * fraction)
+    kept_entities = all_entities[:keep_entities_count]
+    all_kept_entities = [[] for _ in range(len(json_dataset))]  # create empty list of kept entities for each sentence
+    for sentenced_entity in kept_entities:
+        sent_idx, entity = sentenced_entity
+        all_kept_entities[sent_idx].append(entity)
+
+    # cache entities
+    with open(cached_entities_file_path, 'wb') as f:
+        pickle.dump(all_kept_entities, f, pickle.HIGHEST_PROTOCOL)
+
+    return all_kept_entities
+
+
+def load_transformed_dataset(
+        dataset_name: DatasetName,
+        add_gold: float,
+        tokenizer: PreTrainedTokenizer,
+        tokenizer_name: str,
+        max_seq_length: int,
+        *,
+        merge_relabelled: bool = False,
+        add_distant: bool = False
+) -> SubTokenDataset:
+
+    extra_qualifiers = []
+    if merge_relabelled:
+        extra_qualifiers.append('relabelled')
+    if add_distant:
+        extra_qualifiers.append('distant')
+
+    cached_dataset_name = '_'.join([dataset_name.value, 'merged', str(add_gold), *extra_qualifiers, tokenizer_name, f'seq{max_seq_length}']) + '.pt'
 
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
     logging.info(f'Fetching transformed {dataset_name.value} with {add_gold} gold entities'
+                 f'{" and distant entities" if add_distant else ""}'
                  f'{" and relabelled entities" if merge_relabelled else ""}...')
 
     if cached_dataset_file.exists():
@@ -256,17 +317,10 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
     else:
         logging.info(f'Cached version wasn\'t found, creating {cached_dataset_file}...')
 
-        gold_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.TRAIN.value + '.json'))
         distant_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.DISTANT.value + '.json'))
-
-        if not gold_dataset_file.exists():
-            raise ValueError(f'{gold_dataset_file} does not exist!')
 
         if not distant_dataset_file.exists():
             raise ValueError(f'{distant_dataset_file} does not exist!')
-
-        with open(gold_dataset_file) as f:
-            gold_json_dataset = json.load(f)
 
         with open(distant_dataset_file) as f:
             distant_json_dataset = json.load(f)
@@ -283,35 +337,20 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
 
         # list of (token ids, token_mask, label ids, gold label mask)
         examples: List[Example] = []
-        iterator = zip(extractor(gold_json_dataset), extractor(distant_json_dataset))
 
         all_token_ids = []
         all_token_masks = []
         all_weights = []
         all_distant_entities = []
         all_original_lengths = []
-        # tuples of sentence idx and entity
-        all_gold_entities: List[Tuple[int, Entity]] = []
-        for sent_idx, ((token_ids, token_mask, gold_labels, weight), (_, _, distant_labels, _)) in enumerate(iterator):
-            assert len(gold_labels) == len(distant_labels)
-
+        for token_ids, token_mask, distant_labels, weight in extractor(distant_json_dataset):
             all_token_ids.append(token_ids)
             all_token_masks.append(token_mask)
             all_weights.append(weight)
-            all_original_lengths.append(len(gold_labels))
+            all_original_lengths.append(len(distant_labels))
 
-            gold_entities = list(extract_entities(gold_labels, tags_dict))
-            distant_entities = list(extract_entities(distant_labels, tags_dict))
-            all_gold_entities.extend((sent_idx, entity) for entity in gold_entities)
+            distant_entities = list(extract_entities(distant_labels, tags_dict)) if add_distant else []
             all_distant_entities.append(distant_entities)
-
-        shuffle(all_gold_entities)
-        added_entities_count = int(len(all_gold_entities) * add_gold)
-        entities_to_add = all_gold_entities[:added_entities_count]
-        all_added_entities = [[] for _ in range(len(all_token_ids))]  # create empty list of added entities for each sentence
-        for sentenced_entity in entities_to_add:
-            sent_idx, entity = sentenced_entity
-            all_added_entities[sent_idx].append(entity)
 
         all_relabelled_entities = [[] for _ in range(len(all_token_ids))]  # create empty list of relabelled entities for each sentence
         if merge_relabelled:
@@ -325,6 +364,8 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
             for sent_idx, (_, _, relabelled_labels, _) in enumerate(extractor(relabelled_json_dataset)):
                 relabelled_entities = list(extract_entities(relabelled_labels, tags_dict))
                 all_relabelled_entities[sent_idx].extend(relabelled_entities)
+
+        all_added_entities = get_dataset_entities(dataset_name, DatasetType.TRAIN, tokenizer, max_seq_length, fraction=add_gold)
 
         iterator = zip(
             all_token_ids,
@@ -355,10 +396,15 @@ def load_transformed_dataset(dataset_name: DatasetName, add_gold: float, tokeniz
     return dataset
 
 
-def load_dataset(dataset_name: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer, tokenizer_name: str,
-                 max_seq_length: int) -> SubTokenDataset:
+def load_dataset(
+        dataset_name: DatasetName,
+        dataset_type: DatasetType,
+        tokenizer: PreTrainedTokenizer,
+        tokenizer_name: str,
+        max_seq_length: int
+) -> SubTokenDataset:
 
-    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, f'seq{max_seq_length}'])
+    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, f'seq{max_seq_length}']) + '.pt'
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
     logging.info(f'Fetching {dataset_name.value} of type {dataset_type.value}...')

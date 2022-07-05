@@ -49,7 +49,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset_type", default='distant/train', type=str,
                         help='One of ' + ', '.join(dataset_type.value for dataset_type in DatasetType))
     parser.add_argument('--add_gold_labels', default=0.0, type=float,
-                        help='Add fraction of gold labels to distant dataset to simulate partial annotation.')
+                        help='Add fraction of gold labels to dataset to simulate partial annotation.')
+    parser.add_argument('--add_distant', action='store_true',
+                        help='Add distantly labelled entities to training data')
     parser.add_argument('--add_relabelled_labels', action='store_true',
                         help=f'Add labels from {DatasetType.RELABELLED.value} dataset.')
     parser.add_argument("--max_seq_length", default=128, type=int,

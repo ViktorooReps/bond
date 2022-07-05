@@ -71,7 +71,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
     if (args.add_gold_labels > 0.0 or args.add_relabelled_labels) and dataset_type == DatasetType.DISTANT:
         train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length,
-                                                 args.add_relabelled_labels)
+                                                 merge_relabelled=args.add_relabelled_labels, add_distant=args.add_distant)
     else:
         train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
@@ -297,7 +297,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
 
     if (args.add_gold_labels > 0.0 or args.add_relabelled_labels) and dataset_type == DatasetType.DISTANT:
         train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length,
-                                                 args.add_relabelled_labels)
+                                                 merge_relabelled=args.add_relabelled_labels, add_distant=args.add_distant)
     else:
         train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
