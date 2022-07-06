@@ -266,14 +266,17 @@ def get_dataset_entities(
     tags_dict = load_tags_dict(dataset_name)
 
     all_entities: List[Tuple[int, Entity]] = []
+    sent_idx = None  # if there are no sentences then enumerate will not initialize sent_idx
     for sent_idx, (_, _, labels, _) in enumerate(extract_ids_and_masks(json_dataset, tokenizer, max_seq_length=max_seq_length)):
         entities = list(extract_entities(labels, tags_dict))
         all_entities.extend((sent_idx, entity) for entity in entities)
 
+    total_sentences = 0 if sent_idx is None else sent_idx + 1
+
     shuffle(all_entities)
     keep_entities_count = int(len(all_entities) * fraction)
     kept_entities = all_entities[:keep_entities_count]
-    all_kept_entities = [[] for _ in range(len(json_dataset))]  # create empty list of kept entities for each sentence
+    all_kept_entities = [[] for _ in range(total_sentences)]  # create empty list of kept entities for each sentence
     for sentenced_entity in kept_entities:
         sent_idx, entity = sentenced_entity
         all_kept_entities[sent_idx].append(entity)
