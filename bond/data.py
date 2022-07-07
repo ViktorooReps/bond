@@ -247,7 +247,7 @@ def get_dataset_entities(
         fraction: float = 1.0
 ) -> List[List[Entity]]:
 
-    cached_entities_file_name = '_'.join([dataset_name.value, dataset_type.value, str(fraction)]) + '.pkl'
+    cached_entities_file_name = '_'.join([dataset_name.value, dataset_type.value.replace('/', '_'), str(fraction)]) + '.pkl'
     cached_entities_file_path = Path(os.path.join('cache', 'entities', cached_entities_file_name))
     if cached_entities_file_path.exists():
         logging.info(f'Found cached version of entities {cached_entities_file_path}!')
