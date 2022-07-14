@@ -1,11 +1,11 @@
 import random
 from operator import itemgetter
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
 from torch import LongTensor, Tensor, BoolTensor, FloatTensor
-from torch.ao.sparsity import BaseScheduler
+#from torch.ao.sparsity import BaseScheduler
 from torch.nn import Softmax
 from torch.nn.functional import pad, one_hot
 from torch.optim import Optimizer
@@ -139,7 +139,7 @@ def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags
 
 
 def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
-                       warmup_steps: int, end_lr_proportion: float = 0) -> Tuple[PreTrainedModel, Optimizer, BaseScheduler]:
+                       warmup_steps: int, end_lr_proportion: float = 0) -> Tuple[PreTrainedModel, Optimizer, Any]:  #BaseScheduler]:
     """Only compatible with RoBERTa-base for now"""
     model.to(args.device)
 
