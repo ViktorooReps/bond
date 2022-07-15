@@ -1,7 +1,7 @@
 {
     "output": "logs/no_distant/coregularization.log",
     "config_name": "coregularization-no-distant",
-    "memory_needed": 11.0,
+    "memory_needed": 10.0,
     "command": "python train.py",
     "args": [
         ["--seed=1", "--seed=2", "--seed=3", "--seed=4", "--seed=5"],
