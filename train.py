@@ -42,8 +42,6 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
     parser.add_argument("--model_name", default=None, type=str, required=True,
                         help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS))
-    parser.add_argument('--experiment_name', default=None, type=str, required=True,
-                        help='Name of the experiment')
 
     # Other parameters
     parser.add_argument("--dataset_type", default='distant/train', type=str,
@@ -153,16 +151,17 @@ def create_parser() -> argparse.ArgumentParser:
 
 def main(parser: argparse.ArgumentParser) -> Scores:
     args = parser.parse_args()
-    run_name = strftime("%Y-%m-%d_%Hh%Mm%Ss", localtime())
+    run_name = os.environ['TASK_NAME']
+    experiment_name = ('distant' if args.add_distant else 'no_distant') + f'gold{args.add_gold_labels:.2f}'
 
     warnings.simplefilter("ignore", UserWarning)
 
-    tb_dir = Path(os.path.join('tfboard', args.experiment_name))
-    log_dir = Path(os.path.join('logs', args.experiment_name))
+    tb_dir = Path(os.path.join('tfboard', experiment_name))
+    log_dir = Path(os.path.join('logs', experiment_name))
 
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
-            res.write(f'\n\nExperiment {args.experiment_name}\n')
+            res.write(f'\n\nExperiment {experiment_name}, run {run_name}\n')
 
     log_name = run_name + '.log'
 
@@ -217,7 +216,11 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     # Evaluation
 
     train_dataset = f'{dataset.value}+{args.add_gold_labels}gold{"+relabelled" if args.add_relabelled_labels else ""}'
-    model_name = args.experiment_name
+    added_gold = f'{args.add_gold_labels:.2f}'
+    distant = 'with_distant' if args.add_distant else 'without_distant'
+    model_name = args.framework
+    if args.use_coregulation:
+        model_name += '_coregularized'
 
     results = evaluate(args, model, dataset, DatasetType.TRAIN, tokenizer)
     logging.info('Results on train: ' + str(results))
@@ -248,7 +251,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     corr_results = results
 
     with open('results.csv', 'a') as res:
-        res.write(f'{model_name},{train_dataset},'
+        res.write(f'{model_name},{train_dataset},{added_gold},{distant}'
                   f'{test_results["f1"]},{test_results["precision"]},{test_results["recall"]},'
                   f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]}\n')
 
