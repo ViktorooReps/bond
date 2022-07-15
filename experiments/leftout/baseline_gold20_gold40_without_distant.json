@@ -1,7 +1,7 @@
 {
     "output": "logs/no_distant/baseline.log",
     "config_name": "baseline-no-distant",
-    "memory_needed": 5.0,
+    "memory_needed": 6.0,
     "command": "python train.py",
     "args": [
         ["--seed=1", "--seed=2", "--seed=3", "--seed=4", "--seed=5"],
