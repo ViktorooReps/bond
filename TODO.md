@@ -1,6 +1,8 @@
 # Runner
 Move `run_experiment.py` to PyPI. Make it use all the available GPUs efficiently (at least memory-wise). Move memory requirements to configs.  
 
+DONE
+
 Add pausing and resuming experiments.
 
 # Docker

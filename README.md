@@ -18,7 +18,7 @@ in dataset from KB matching. The results (**median** ± std) obtained from 5 run
 |-------------------------------------------------------|--------------------------------------------------------|
 | **71.38** ± 0.56 / **81.50** ± 0.6 / **63.49** ± 0.54 | **71.94** ± 0.54 / **82.59** ± 0.59 / **63.72** ± 0.52 |
 
-Experiment configs: `experiments/supervised/baseline/auto/*.json`
+Experiment configs: `experiments/configs/baseline/*.json`
 
 # BOND
 Extremely volatile method that requires rigorous hyperparameter fine-tuning. The hyperparameters were tuned 
@@ -31,7 +31,7 @@ with RNG seed 42 and evaluated with seeds 1-5. While the best model reached the 
 
 Which shows that model performance is greatly dependent on parameter initialization.
 
-Experiment configs: `experiments/bond/baseline/auto/*.json`
+Experiment configs: `experiments/configs/bond/*.json`
 
 # Co-regularization
 
@@ -43,18 +43,18 @@ Robust method for filtering out noisy annotations.
 | **77.17** ± 0.23 / **89.64** ± 0.25 / **67.72** ± 0.32 | **77.77** ± 0.21 / **90.78** ± 0.21 / **67.95** ± 0.31 |
 
 
-Experiment configs: `experiments/supervised/coregularization/auto/*.json`
+Experiment configs: `experiments/configs/coregularization/*.json`
 
 # Results reproduction
 
-Use `run_experiment.py` script to run any experiment config. Use `--help` option to get familiar 
-with possible script arguments.
+Use TRIAGE to run any experiment config. Use `--help` option to get familiar 
+with possible command-line arguments.
 
 ## Example: baseline
 
 ```bash
 ./init.sh
-python run_experiment.py experiments/supervised/baseline/auto/*.json
+triage experiments/configs/baseline/*.json
 ```
 
 ## Acknowledgements
