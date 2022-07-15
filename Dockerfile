@@ -5,5 +5,3 @@ RUN apt-get -y install git
 
 RUN git clone https://github.com/ViktorooReps/bond.git
 RUN cd bond
-
-RUN bash init.sh
