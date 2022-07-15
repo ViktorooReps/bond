@@ -7,3 +7,4 @@ numpy~=1.19.5
 seaborn~=0.11.2
 pandas~=1.1.5
 nvitop~=0.5.4
+triage-runner~=0.1.4
