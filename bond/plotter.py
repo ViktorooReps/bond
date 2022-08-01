@@ -6,6 +6,7 @@ from pandas import DataFrame
 from torch.utils.data import DataLoader
 from transformers import RobertaTokenizer
 
+import bond.data.batching
 from bond.data import DatasetName, DatasetType, SubTokenDataset, load_dataset, load_tags_dict
 from bond.utils import ner_scores
 
@@ -39,11 +40,11 @@ def score_cached_dataset(dataset_path: str) -> None:
     gold_dataset = load_dataset(dataset_name, DatasetType.TRAIN, tokenizer, 'roberta-base', max_seq_len)
 
     distant_labels = []
-    for _, _, _, labels, mask, _, _ in DataLoader(distant_dataset, batch_size=1, collate_fn=distant_dataset.collate_fn):
+    for _, _, _, labels, mask, _, _ in DataLoader(distant_dataset, batch_size=1, collate_fn=collate_fn):
         distant_labels.extend(labels.masked_select(mask).tolist())
 
     gold_labels = []
-    for _, _, _, labels, mask, _, _ in DataLoader(gold_dataset, batch_size=1, collate_fn=gold_dataset.collate_fn):
+    for _, _, _, labels, mask, _, _ in DataLoader(gold_dataset, batch_size=1, collate_fn=collate_fn):
         gold_labels.extend(labels.masked_select(mask).tolist())
 
     assert len(gold_labels) == len(distant_labels)

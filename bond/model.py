@@ -3,14 +3,15 @@ from time import sleep
 from typing import Iterable, Optional, Tuple, Callable
 
 import torch
-from torch import FloatTensor, LongTensor, Tensor, BoolTensor
-from torch.nn.functional import one_hot, softmax
+from torch import LongTensor, Tensor, BoolTensor
+from torch.nn.functional import softmax
 from transformers import RobertaModel, BertPreTrainedModel, RobertaConfig
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, KLDivLoss
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from bond.crf import MarginalCRF
+from bond.data.batching import BatchedExamples
 from bond.utils import apply_mask, extract_subwords, convert_hard_to_soft_labels
 
 ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP = {
@@ -121,10 +122,9 @@ class BERTHead(nn.Module):
             self,
             seq_repr: Tensor,
             seq_lens: Iterable[int],
-            token_mask: Optional[BoolTensor] = None,
+            labeled_tokens_mask: Optional[BoolTensor] = None,
             labels: Optional[LongTensor] = None,
             label_mask: Optional[BoolTensor] = None,
-            seq_weights: Optional[FloatTensor] = None,
             self_training: bool = False,
             use_kldiv_loss: bool = False
     ):
@@ -137,7 +137,7 @@ class BERTHead(nn.Module):
 
         if self.subword_repr_size > 0:
             # extract subwords for each entity
-            subwords_repr = extract_subwords(seq_repr, seq_lens, token_mask)
+            subwords_repr = extract_subwords(seq_repr, seq_lens, labeled_tokens_mask)
             batch_size, seq_len, subword_count, num_features = subwords_repr.shape
 
             pooler = nn.MaxPool2d(kernel_size=(subword_count, 1))
@@ -145,23 +145,18 @@ class BERTHead(nn.Module):
             subwords_repr = pooler(subwords_repr).view(batch_size, seq_len, self.subword_repr_size)
 
             # get first subword of each word
-            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
+            seq_repr, new_padding_mask = apply_mask(seq_repr, labeled_tokens_mask)
             assert seq_repr.shape == (batch_size, seq_len, num_features)
 
             # concatenate representations
             seq_repr = torch.cat([seq_repr, subwords_repr], dim=2)
         else:
             # get first subword of each word
-            seq_repr, new_label_mask = apply_mask(seq_repr, token_mask)
-
-        batch_size, seq_len, num_features = seq_repr.shape
+            seq_repr, new_padding_mask = apply_mask(seq_repr, labeled_tokens_mask)
 
         if self.lstm is not None:
             seq_repr = self.dropout(seq_repr)
             seq_repr, _ = self.lstm(seq_repr)
-
-        if label_mask is None:
-            label_mask = new_label_mask
 
         seq_repr = self.dropout(seq_repr)
         label_scores = self.hidden2labels(seq_repr)
@@ -175,20 +170,12 @@ class BERTHead(nn.Module):
         outputs = (label_probs,)
 
         if labels is not None:
-            # convert seq_weights to token weights
-            if seq_weights is None:
-                seq_weights = torch.ones(batch_size)
-                tok_weights = torch.ones(batch_size, seq_len)
-            else:
-                seq_weights = seq_weights.reshape(batch_size, 1)
-                tok_weights = seq_weights.repeat(1, seq_len)
 
             if labels.shape != label_probs.shape:
                 # convert hard labels into one-hots
                 labels = convert_hard_to_soft_labels(labels, self.num_labels)
 
             raveled_gold_labels = labels.contiguous().view(-1, self.num_labels)
-            raveled_tok_weights = tok_weights.contiguous().view(-1)
             raveled_mask = label_mask.contiguous().view(-1)
 
             not_entities = (torch.argmax(raveled_gold_labels, dim=-1) == 0)
@@ -198,17 +185,16 @@ class BERTHead(nn.Module):
             if self_training and use_kldiv_loss:
                 raveled_log_probs = log_probs.contiguous().view(-1, self.num_labels)
                 tok_wise_loss: Tensor = KLDivLoss(reduction='batchmean')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
-                loss = torch.mean(tok_wise_loss * label_weights[raveled_mask] * raveled_tok_weights[raveled_mask])
+                loss = torch.mean(tok_wise_loss * label_weights[raveled_mask])
             else:
                 if self.crf is not None:
-                    # TODO: no weighing for crf implemented yet
                     batch_loss = self.crf.forward(label_scores, marginal_tags=labels, mask=label_mask, reduction='none')
-                    loss = (batch_loss * seq_weights).sum() / label_mask.float().sum()
+                    loss = batch_loss.sum() / label_mask.float().sum()
                 else:
                     raveled_label_scores = label_scores.contiguous().view(-1, self.num_labels)
                     tok_wise_loss: Tensor = CrossEntropyLoss(reduction='none')(raveled_label_scores[raveled_mask],
                                                                                raveled_gold_labels[raveled_mask])
-                    loss = torch.mean(tok_wise_loss * label_weights[raveled_mask] * raveled_tok_weights[raveled_mask])
+                    loss = torch.mean(tok_wise_loss * label_weights[raveled_mask])
 
             outputs = (loss,) + outputs
 
@@ -267,10 +253,18 @@ class RobertaWithHead(BertPreTrainedModel):
         self.roberta = RobertaModel(config)
         self.frozen_bert = freeze_bert
         self.pooler = pooler
-        self.head = BERTHead(num_labels=self.num_labels, hidden_size=hidden_size, dropout_prob=head_dropout,
-                             subword_repr_size=subword_repr_size, add_lstm=add_lstm,
-                             lstm_hidden=lstm_hidden, lstm_layers=lstm_layers, lstm_dropout=lstm_dropout, add_crf=add_crf,
-                             no_entity_weight=no_entity_weight)
+        self.head = BERTHead(
+            num_labels=self.num_labels,
+            hidden_size=hidden_size,
+            dropout_prob=head_dropout,
+            subword_repr_size=subword_repr_size,
+            add_lstm=add_lstm,
+            lstm_hidden=lstm_hidden,
+            lstm_layers=lstm_layers,
+            lstm_dropout=lstm_dropout,
+            add_crf=add_crf,
+            no_entity_weight=no_entity_weight
+        )
 
         if self.frozen_bert:
             self.freeze_bert()
@@ -290,45 +284,35 @@ class RobertaWithHead(BertPreTrainedModel):
     def returns_probs(self) -> bool:
         return self.head.returns_probs
 
-    def forward(
-            self,
-            input_ids: Tensor,
-            token_mask: BoolTensor,
-            attention_mask: Optional[Tensor] = None,
-            token_type_ids: Optional[Tensor] = None,
-            position_ids: Optional[Tensor] = None,
-            head_mask: Optional[Tensor] = None,
-            inputs_embeds: Optional[Tensor] = None,
-            labels: Optional[Tensor] = None,
-            label_mask: Optional[BoolTensor] = None,
-            seq_weights: Optional[Iterable[float]] = None,
-            self_training: bool = False,
-            use_kldiv_loss: bool = False,
-            **argv
-    ):
-
+    def forward(self, examples: BatchedExamples, self_training: bool = False, use_kldiv_loss: bool = False):
+        attention_mask = examples.token_padding_mask
         seq_lens = [mask.sum() for mask in attention_mask]
 
-        roberta_inputs = dict(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, position_ids=position_ids,
-                              head_mask=head_mask, inputs_embeds=inputs_embeds)
+        input_ids = examples.token_ids
 
         outputs: BaseModelOutputWithPoolingAndCrossAttentions
 
         if self.frozen_bert:
             with torch.no_grad():
                 self.roberta.eval()
-                outputs = self.roberta(**roberta_inputs)
+                outputs = self.roberta(input_ids=input_ids, attention_mask=attention_mask)
         else:
-            outputs = self.roberta(**roberta_inputs)
+            outputs = self.roberta(input_ids=input_ids, attention_mask=attention_mask)
 
         # outputs: final_embedding, pooler_output, (hidden_states), (attentions)
 
         final_embedding = outputs.last_hidden_state
         all_layers_sequence_outputs = outputs.hidden_states
         pooled_embedding = POOLERS[self.pooler](all_layers_sequence_outputs)
-        head_outputs = self.head(pooled_embedding, seq_lens=seq_lens, token_mask=token_mask,
-                                 labels=labels, label_mask=label_mask,
-                                 seq_weights=seq_weights, self_training=self_training, use_kldiv_loss=use_kldiv_loss)  # (loss), scores
+        head_outputs = self.head(
+            pooled_embedding,
+            seq_lens=seq_lens,
+            labeled_tokens_mask=examples.labeled_token_mask,
+            labels=examples.label_distributions,
+            label_mask=examples.label_mask,
+            self_training=self_training,
+            use_kldiv_loss=use_kldiv_loss
+        )  # (loss), scores
 
         outputs = head_outputs + (final_embedding,) + outputs[2:]
 
@@ -350,35 +334,20 @@ class CoregulatedModel(nn.Module):
         torch.cuda.empty_cache()
         sleep(10)
 
-    def forward(
-            self,
-            labels: Optional[Tensor] = None,
-            label_mask: Optional[BoolTensor] = None,
-            gold_label_mask: Optional[BoolTensor] = None,
-            warmup: bool = False,
-            self_training: bool = False,
-            *args,
-            **kwargs
-    ):
-        if labels is None:
-            return self._models[self._main_model_idx](*args, **kwargs)
-
-        if label_mask is None:
-            label_mask = torch.ones(labels.shape, dtype=torch.bool)
-
-        if gold_label_mask is None:
-            gold_label_mask = torch.zeros(labels.shape, dtype=torch.bool)
+    def forward(self, examples: BatchedExamples, *args, warmup: bool = False, self_training: bool = False, **kwargs):
+        if examples.label_ids is None:
+            return self._models[self._main_model_idx](examples)
 
         if self_training:
-            return self._models[self._main_model_idx](*args, **kwargs, labels=labels, label_mask=label_mask)
+            return self._models[self._main_model_idx](*args, **kwargs, examples=examples, self_training=self_training)
 
         # do not compute kld loss for gold labels
-        compute_kld_loss = ~gold_label_mask & label_mask
+        compute_kld_loss = ~examples.gold_entities_mask & examples.label_mask
 
         n_models = len(self._models)
 
         # outputs are tuples of (loss, predicted label probs)
-        outputs = [model(*args, **kwargs, labels=labels, label_mask=label_mask)[:2] for model in self._models]
+        outputs = [model(*args, **kwargs, examples=examples)[:2] for model in self._models]
         models_loss = sum(loss for loss, _ in outputs) / n_models
         if not warmup:
             models_avg_probs = sum(probs for _, probs in outputs) / n_models

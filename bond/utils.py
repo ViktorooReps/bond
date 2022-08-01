@@ -1,6 +1,6 @@
 import random
 from operator import itemgetter
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, TypeVar
 
 import numpy as np
 import torch
@@ -300,3 +300,25 @@ def extract_subwords(seq_repr: Tensor, seq_lens: Iterable[int], token_mask: Bool
 def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     labels[labels < 0] = 0
     return one_hot(labels, num_labels).float()
+
+
+def create_one_hot_encoding(label_ids: Tuple[int, ...]) -> Tuple[Tuple[float, ...], ...]:
+    num_labels = max(label_ids) + 1
+
+    def one_hot_encode(label_id: int) -> Tuple[float, ...]:
+        base = [0.0] * num_labels
+        base[label_id] = 1.0
+        return tuple(base)
+
+    return tuple(map(one_hot_encode, label_ids))
+
+
+_Any = TypeVar('_Any')
+
+
+def recursive_tuple(iterable: Iterable[Iterable[_Any]]) -> Tuple[Tuple[_Any, ...], ...]:
+    return tuple(map(tuple, iterable))
+
+
+def wrap(opt: Optional, value: _Any) -> List[_Any]:
+    return [value] if opt is not None else []

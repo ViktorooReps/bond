@@ -8,7 +8,8 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
-from bond.data import DatasetName, DatasetType, load_dataset, load_tags_dict, load_transformed_dataset, BertExample
+from bond.data.batching import BatchedExamples
+from bond.data.dataset import DatasetName, DatasetType, load_transformed_dataset, load_dataset, load_tags_dict
 from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency, convert_hard_to_soft_labels
 
 try:
@@ -35,13 +36,10 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 
     model.eval()
     for batch in tqdm(eval_dataloader, desc=f"Evaluating on {dataset_type.value} dataset", leave=False):
-        batch: BertExample = tuple(t.to(args.device) for t in batch)
+        batch: BatchedExamples
         with torch.no_grad():
-            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
             with torch.cuda.amp.autocast():
-                outputs = model(**inputs)
+                outputs = model(batch)
 
             tmp_eval_loss, logits = outputs[:2]
             eval_loss += tmp_eval_loss.item()
@@ -49,10 +47,10 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
         nb_eval_steps += 1
 
         batch_raveled_logits = torch.cat(list(logits.detach().cpu()), dim=0)
-        batch_raveled_label_mask = torch.cat(list(label_mask.cpu()), dim=0)
-        batch_raveled_true_labels = torch.cat(list(labels.cpu()), dim=0)
-        batch_predicted_labels = torch.argmax(batch_raveled_logits, dim=-1).masked_select(batch_raveled_label_mask)
-        batch_true_labels = batch_raveled_true_labels.masked_select(batch_raveled_label_mask)
+        batch_raveled_main_sentences_mask = torch.cat(list(batch.main_sentences_mask.cpu()), dim=0)
+        batch_raveled_true_labels = torch.cat(list(batch.label_ids.cpu()), dim=0)
+        batch_predicted_labels = torch.argmax(batch_raveled_logits, dim=-1).masked_select(batch_raveled_main_sentences_mask)
+        batch_true_labels = batch_raveled_true_labels.masked_select(batch_raveled_main_sentences_mask)
 
         assert len(batch_predicted_labels) == len(batch_true_labels)
 
@@ -69,9 +67,13 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
                tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
-    if (args.add_gold_labels > 0.0 or args.add_relabelled_labels) and dataset_type == DatasetType.DISTANT:
-        train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length,
-                                                 merge_relabelled=args.add_relabelled_labels, add_distant=args.add_distant)
+    if (args.add_gold_labels > 0.0 or args.add_base_distribution) and dataset_type == DatasetType.DISTANT:
+        train_dataset = load_transformed_dataset(
+            dataset, args.add_gold_labels, tokenizer, args.model_name,
+            max_seq_length=args.max_seq_length,
+            add_base_distribution=args.add_base_distribution,
+            add_distant=args.add_distant
+        )
     else:
         train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
@@ -125,14 +127,10 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             epoch_iterator.close()
             continue
 
-        batch: BertExample = tuple(t.to(args.device) for t in batch)
-        token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-        inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                  "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
-
+        batch: BatchedExamples
         model.train()
         with torch.cuda.amp.autocast():
-            outputs = model(**inputs, self_training=False, warmup=True)
+            outputs = model(batch, self_training=False, warmup=True)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
@@ -157,14 +155,10 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             global_batch += 1
             examples_from_last_log += args.batch_size
 
-            batch: BertExample = tuple(t.to(args.device) for t in batch)
-            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
-
+            batch: BatchedExamples
             model.train()
             with torch.cuda.amp.autocast():
-                outputs = model(**inputs, self_training=False)
+                outputs = model(batch, self_training=False)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
@@ -234,32 +228,32 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             batches_since_update += 1
             examples_from_last_log += args.batch_size
 
-            batch: BertExample = tuple(t.to(args.device) for t in batch)
+            batch: BatchedExamples
 
             # Using current teacher to update the labels
-            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "gold_label_mask": gold_label_mask}
+            batch_without_labels = batch.with_changes(label_ids=None)
             with torch.no_grad():
-                outputs = self_training_teacher_model(**inputs)
+                with torch.cuda.amp.autocast():
+                    outputs = self_training_teacher_model(batch_without_labels)
 
             predictions = outputs[0]
             if args.correct_frequency:
-                pred_labels = soft_frequency(logits=predictions, power=2, probs=True)
+                teacher_label_distributions = soft_frequency(logits=predictions, power=2, probs=True)
             else:
-                pred_labels = predictions
+                teacher_label_distributions = predictions
 
             _threshold = args.label_keep_threshold
-            teacher_mask = (pred_labels.max(dim=-1)[0] > _threshold)
+            teacher_mask = (teacher_label_distributions.max(dim=-1)[0] > _threshold)
 
-            pred_labels[gold_label_mask] = convert_hard_to_soft_labels(labels[gold_label_mask], num_labels)
+            gold_label_mask = batch.gold_entities_mask
+            teacher_label_distributions[gold_label_mask] = convert_hard_to_soft_labels(batch.label_ids[gold_label_mask], num_labels)
 
-            inputs = {**inputs,
-                      **{"labels": pred_labels, "label_mask": (label_mask & teacher_mask) | gold_label_mask, 'seq_weights': weight}}
+            new_label_mask = (batch.label_mask & teacher_mask) | gold_label_mask
+            teacher_batch = batch.with_changes(label_distributions=teacher_label_distributions, label_mask=new_label_mask)
 
             model.train()
             with torch.cuda.amp.autocast():
-                outputs = model(**inputs, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
+                outputs = model(teacher_batch, self_training=True, use_kldiv_loss=args.use_kldiv_loss)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
@@ -295,9 +289,13 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
                      tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs"""
 
-    if (args.add_gold_labels > 0.0 or args.add_relabelled_labels) and dataset_type == DatasetType.DISTANT:
-        train_dataset = load_transformed_dataset(dataset, args.add_gold_labels, tokenizer, args.model_name, args.max_seq_length,
-                                                 merge_relabelled=args.add_relabelled_labels, add_distant=args.add_distant)
+    if (args.add_gold_labels > 0.0 or args.add_base_distribution) and dataset_type == DatasetType.DISTANT:
+        train_dataset = load_transformed_dataset(
+            dataset, args.add_gold_labels, tokenizer, args.model_name,
+            max_seq_length=args.max_seq_length,
+            add_base_distribution=args.add_base_distribution,
+            add_distant=args.add_distant
+        )
     else:
         train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
@@ -345,14 +343,11 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
             epoch_iterator.close()
             continue
 
-        batch: BertExample = tuple(t.to(args.device) for t in batch)
-        token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-        inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                  "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
+        batch: BatchedExamples
 
         model.train()
         with torch.cuda.amp.autocast():
-            outputs = model(**inputs, self_training=False, warmup=True)
+            outputs = model(batch, self_training=False, warmup=True)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
@@ -378,14 +373,11 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
             global_batch += 1
             examples_from_last_log += args.batch_size
 
-            batch: BertExample = tuple(t.to(args.device) for t in batch)
-            token_ids, token_mask, attention_mask, labels, label_mask, gold_label_mask, weight = batch
-            inputs = {"input_ids": token_ids, "token_mask": token_mask, "attention_mask": attention_mask,
-                      "labels": labels, 'label_mask': label_mask, 'seq_weights': weight, "gold_label_mask": gold_label_mask}
+            batch: BatchedExamples
 
             model.train()
             with torch.cuda.amp.autocast():
-                outputs = model(**inputs, self_training=False)
+                outputs = model(batch, self_training=False)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 

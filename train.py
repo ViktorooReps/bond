@@ -9,7 +9,8 @@ from time import localtime, strftime
 import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel
 
-from bond.data import DatasetName, DatasetType, load_tags_dict, relabel_dataset
+from bond.data import relabel_dataset
+from bond.data.dataset import DatasetType, DatasetName, load_tags_dict
 from bond.model import PoolingStrategy, RobertaWithHead, CoregulatedModel
 from bond.trainer import TrainingFramework, evaluate, train
 from bond.utils import Scores, set_seed
@@ -251,7 +252,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     corr_results = results
 
     with open('results.csv', 'a') as res:
-        res.write(f'{model_name},{train_dataset},{added_gold},{distant}'
+        res.write(f'{model_name},{train_dataset},{added_gold},{distant},'
                   f'{test_results["f1"]},{test_results["precision"]},{test_results["recall"]},'
                   f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]}\n')
 

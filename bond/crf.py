@@ -348,7 +348,6 @@ class MarginalCRF(BaseCRF):
             alpha += log_next_marginal_tags * mask[i].view(batch_size, 1)
 
         # Add end transition score
-        last_tag_indexes = mask.sum(0).long() - 1
         end_transitions = self.end_transitions.expand(batch_size, num_tags)
         stops = alpha + end_transitions
         return log_sum_exp(stops)  # (batch_size,)
