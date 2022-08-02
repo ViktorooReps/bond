@@ -280,7 +280,7 @@ def load_transformed_dataset(
 
             new_examples.append(example.with_changes(label_ids=torch_label_ids, gold_entities_mask=torch_gold_entities_mask))
 
-        dataset = SubTokenDataset(examples, token_pad=tokenizer.pad_token_id)
+        dataset = SubTokenDataset(new_examples, token_pad=tokenizer.pad_token_id)
 
         # cache built dataset
         with open(cached_dataset_file, 'wb') as f:
