@@ -4,6 +4,7 @@
     "memory_needed": 11.0,
     "command": "python train.py",
     "args": [
+        "--logging=10000000",
         "--add_distant",
         "--framework=bond",
         "--resfile=res.final.txt",
