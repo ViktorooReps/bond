@@ -88,7 +88,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Dropout probability for token representation from BERT')
     parser.add_argument('--lstm_dropout', default=0.5, type=float,
                         help='Dropout probability between LSTM layers.')
-    parser.add_argument('--head_learning_rate', default=1e-4, type=float,
+    parser.add_argument('--head_learning_rate', type=float,
                         help='The initial learning rate for model\' head: LSTM-CRF or CRF. Defaults to --learning_rate')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
                         help="LR decrease with layer depth")
@@ -219,7 +219,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     # Evaluation
 
-    train_dataset = f'{dataset.value}+{args.add_gold_labels}gold'
+    train_dataset = dataset.value
     added_gold = f'{args.add_gold_labels:.2f}'
     distant = 'with_distant' if args.add_distant else 'without_distant'
     model_name = args.framework
@@ -256,8 +256,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     corr_results = results
     model_params = {
-        "bert_learning_rate": args.bert_learning_rate,
-        "head_learning_rate": args.head_learning_rate,
+        "learning_rate": args.learning_rate,
         "batch_size": args.batch_size,
         "bert_dropout": args.bert_dropout,
         "head_dropout": args.head_dropout,
