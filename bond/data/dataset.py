@@ -241,7 +241,7 @@ def load_transformed_dataset(
         for example in extractor(distant_json_dataset):
             examples.append(example)
 
-            distant_entities = list(extract_entities(example.label_ids, tags_dict)) if add_distant else []
+            distant_entities = list(extract_entities(example.label_ids.tolist(), tags_dict)) if add_distant else []
             all_distant_entities.append(distant_entities)
 
         if add_base_distribution:
