@@ -77,6 +77,8 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     else:
         train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
     num_labels = len(load_tags_dict(dataset).keys())
@@ -231,7 +233,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             batch: BatchedExamples
 
             # Using current teacher to update the labels
-            batch_without_labels = batch.with_changes(label_ids=None)
+            batch_without_labels = batch.without_labels()
             with torch.no_grad():
                 with torch.cuda.amp.autocast():
                     outputs = self_training_teacher_model(batch_without_labels)
@@ -245,11 +247,14 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
             _threshold = args.label_keep_threshold
             teacher_mask = (teacher_label_distributions.max(dim=-1)[0] > _threshold)
 
-            gold_label_mask = batch.gold_entities_mask
-            teacher_label_distributions[gold_label_mask] = convert_hard_to_soft_labels(batch.label_ids[gold_label_mask], num_labels)
+            gold_label_mask = batch.gold_entities_mask.to(device)
+            label_mask = batch.label_mask.to(device)
+            label_ids = batch.label_ids.to(device)
 
-            new_label_mask = (batch.label_mask & teacher_mask) | gold_label_mask
-            teacher_batch = batch.with_changes(label_distributions=teacher_label_distributions, label_mask=new_label_mask)
+            teacher_label_distributions[gold_label_mask] = convert_hard_to_soft_labels(label_ids[gold_label_mask], num_labels)
+
+            new_label_mask = (label_mask & teacher_mask) | gold_label_mask
+            teacher_batch = batch.with_changes(label_distributions=teacher_label_distributions.cpu(), label_mask=new_label_mask.cpu())
 
             model.train()
             with torch.cuda.amp.autocast():

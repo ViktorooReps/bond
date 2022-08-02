@@ -1,4 +1,6 @@
 from _operator import attrgetter
+from copy import copy
+
 from dataclasses import dataclass
 from typing import Sequence, Union, Iterable
 
@@ -14,6 +16,12 @@ class BatchedExamples(Example):
     gold_entities_mask: BoolTensor
     token_padding_mask: BoolTensor
     label_mask: BoolTensor
+
+    def without_labels(self) -> 'BatchedExamples':
+        copy_ = copy(self)
+        copy_.label_ids = None
+        copy_.label_distributions = None
+        return copy_
 
     def with_changes(
             self,
