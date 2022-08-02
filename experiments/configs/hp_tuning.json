@@ -1,5 +1,4 @@
 {
-    "output": "logs/no_distant/baseline.log",
     "config_name": "baseline-no-distant",
     "memory_needed": 10.0,
     "command": "python train.py",
