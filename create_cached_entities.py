@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from datasets import tqdm
+from tqdm import tqdm
 from transformers import RobertaTokenizer
 
 from bond.data.dataset import DatasetName, DatasetType, get_dataset_entities
