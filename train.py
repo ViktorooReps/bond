@@ -279,7 +279,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
         }}
 
     with open('results.csv', 'a') as res:
-        res.write(f'{model_name},{train_dataset},{added_gold},{distant},{model_params},'
+        res.write(f'{model_name},{train_dataset},{added_gold},{distant},"{model_params}",'
                   f'{test_results["f1"]},{test_results["precision"]},{test_results["recall"]},'
                   f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]},'
                   f'{dev_results["f1"]},{dev_results["precision"]},{dev_results["recall"]}\n')
