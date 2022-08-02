@@ -1,7 +1,7 @@
 {
     "output": "logs/distant/bond.log",
     "config_name": "bond-distant",
-    "memory_needed": 11.0,
+    "memory_needed": 7.0,
     "command": "python train.py",
     "args": [
         "--logging=10000000",
