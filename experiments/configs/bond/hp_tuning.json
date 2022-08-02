@@ -14,7 +14,7 @@
         "--gradient_accumulation_steps=1",
         "--max_seq_len=512",
         "--batch_size=4",
-        "--head_dropout=0.7",
+        "--head_dropout=0.3",
         "--bert_dropout=0.1",
         "--learning_rate=5e-05",
         "--weight_decay=1e-04",
