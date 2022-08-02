@@ -69,12 +69,14 @@ def create_parser() -> argparse.ArgumentParser:
                              'One of ' + ', '.join(framework.value for framework in TrainingFramework))
     parser.add_argument("--batch_size", default=8, type=int,
                         help="Batch size per GPU/CPU for training.")
+    parser.add_argument('--learning_rate', default=1e-5, type=float,
+                        help='Model learning rate')
     parser.add_argument('--gradient_accumulation_steps', type=int, default=-1,
                         help='Number of batches in each step.')
     parser.add_argument('--use_linear_scheduler', action='store_true',
                         help='Use linear scheduler from transformers')
-    parser.add_argument("--bert_learning_rate", default=1e-5, type=float,
-                        help="The initial learning rate for RoBERTa.")
+    parser.add_argument("--bert_learning_rate", type=float,
+                        help="The initial learning rate for RoBERTa. Defaults to --learning_rate.")
     parser.add_argument('--freeze_bert', action='store_true',
                         help='Do not compute gradients for RoBERTa.')
     parser.add_argument('--pooler', default='last',
@@ -87,7 +89,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument('--lstm_dropout', default=0.5, type=float,
                         help='Dropout probability between LSTM layers.')
     parser.add_argument('--head_learning_rate', default=1e-4, type=float,
-                        help='The initial learning rate for model\' head: LSTM-CRF or CRF')
+                        help='The initial learning rate for model\' head: LSTM-CRF or CRF. Defaults to --learning_rate')
     parser.add_argument("--lr_decrease", default=1.0, type=float,
                         help="LR decrease with layer depth")
     parser.add_argument("--weight_decay", default=1e-4, type=float,
@@ -172,6 +174,11 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                         handlers=[logging.FileHandler(os.path.join(log_dir, log_name)), logging.StreamHandler(sys.stdout)],
                         level=logging.INFO)
     tb_writer = SummaryWriter(os.path.join(tb_dir, run_name))
+
+    if args.head_learning_rate is None:
+        args.head_learning_rate = args.learning_rate
+    if args.bert_learning_rate is None:
+        args.bert_learning_rate = args.learning_rate
 
     logging.info('Arguments: ' + str(args))
 
