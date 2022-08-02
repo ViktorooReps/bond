@@ -274,7 +274,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
             "label_keep_threshold": args.label_keep_threshold,
             "self_training_lr_proportion": args.self_training_lr_proportion,
             "start_updates": args.start_updates,
-            "end_updates": args.enc_updates
+            "end_updates": args.end_updates
         }}
 
     with open('results.csv', 'a') as res:
