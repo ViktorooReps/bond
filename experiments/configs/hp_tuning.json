@@ -4,6 +4,7 @@
     "memory_needed": 10.0,
     "command": "python train.py",
     "args": [
+        "--logging=10000000",
         "--framework=supervised",
         "--resfile=res.final.txt",
         "--dataset=conll03",
