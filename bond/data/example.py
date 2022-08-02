@@ -29,7 +29,7 @@ class Example(TokenizedSentence):
     label_distributions: Tensor
     label_mask: BoolTensor
     main_sentences_mask: BoolTensor  # label-level
-    gold_entities_mask: Optional[BoolTensor]
+    gold_entities_mask: BoolTensor
 
     @classmethod
     def from_sentences(
@@ -58,14 +58,15 @@ class Example(TokenizedSentence):
             torch_label_distributions.append(torch.tensor(sent.label_distributions, dtype=torch.float))
             torch_main_sentences_mask.append(torch.full([sent_len], fill_value=is_main_sentence, dtype=torch.bool).bool())
 
+        basic_label_mask = torch.concat(torch_main_sentences_mask, dim=0).bool()  # basic label mask is the same as main_sentences_mask
         return cls(
-            token_ids=torch.concat(torch_token_ids).long(),
-            labeled_token_mask=torch.concat(torch_labeled_token_mask).bool(),
-            label_ids=torch.concat(torch_label_ids).long(),
-            label_distributions=torch.concat(torch_label_distributions),
-            label_mask=torch.ones(len(torch_label_ids), dtype=torch.bool).bool(),
-            main_sentences_mask=torch.concat(torch_main_sentences_mask).bool(),
-            gold_entities_mask=None
+            token_ids=torch.concat(torch_token_ids, dim=0).long(),
+            labeled_token_mask=torch.concat(torch_labeled_token_mask, dim=0).bool(),
+            label_ids=torch.concat(torch_label_ids, dim=0).long(),
+            label_distributions=torch.concat(torch_label_distributions, dim=0),
+            label_mask=basic_label_mask,
+            main_sentences_mask=basic_label_mask,
+            gold_entities_mask=basic_label_mask
         )
 
     def with_changes(
@@ -102,6 +103,7 @@ def get_examples(
         json_dataset: Iterable[List[Dict[str, Any]]],
         tokenizer: PreTrainedTokenizer,
         *,
+        num_labels: int,
         max_seq_length: int = 512
 ) -> Iterator[Example]:
     """Creates generator that outputs (token_ids, token_mask, labels) from json dataset"""
@@ -117,15 +119,15 @@ def get_examples(
     def tokenize_sentence(sent: dict) -> TokenizedSentence:
         token_ids: List[int] = []
         labeled_token_mask: List[bool] = []
-        for word in sent:
+        for word in sent['str_words']:
             word_token_ids, word_labeled_token_mask = tokenize_word(word)
             token_ids.extend(word_token_ids)
-            word_labeled_token_mask.extend(word_labeled_token_mask)
+            labeled_token_mask.extend(word_labeled_token_mask)
 
-        label_ids = tuple(sent['label_ids'])
+        label_ids = tuple(sent['tags'])
 
         if 'tag_distributions' not in sent:
-            label_distributions = create_one_hot_encoding(label_ids)
+            label_distributions = create_one_hot_encoding(label_ids, num_labels=num_labels)
         else:
             label_distributions = recursive_tuple(sent['tag_distributions'])
 

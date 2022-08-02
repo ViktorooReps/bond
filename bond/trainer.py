@@ -67,7 +67,7 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
 def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
                tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
-    if (args.add_gold_labels > 0.0 or args.add_base_distribution) and dataset_type == DatasetType.DISTANT:
+    if dataset_type == DatasetType.DISTANT:
         train_dataset = load_transformed_dataset(
             dataset, args.add_gold_labels, tokenizer, args.model_name,
             max_seq_length=args.max_seq_length,
@@ -289,7 +289,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
                      tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
     """Train model for ner_fit_epochs epochs"""
 
-    if (args.add_gold_labels > 0.0 or args.add_base_distribution) and dataset_type == DatasetType.DISTANT:
+    if dataset_type == DatasetType.DISTANT:
         train_dataset = load_transformed_dataset(
             dataset, args.add_gold_labels, tokenizer, args.model_name,
             max_seq_length=args.max_seq_length,

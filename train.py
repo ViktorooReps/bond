@@ -4,12 +4,10 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from time import localtime, strftime
 
 import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel
 
-from bond.data import relabel_dataset
 from bond.data.dataset import DatasetType, DatasetName, load_tags_dict
 from bond.model import PoolingStrategy, RobertaWithHead, CoregulatedModel
 from bond.trainer import TrainingFramework, evaluate, train
@@ -51,8 +49,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Add fraction of gold labels to dataset to simulate partial annotation.')
     parser.add_argument('--add_distant', action='store_true',
                         help='Add distantly labelled entities to training data')
-    parser.add_argument('--add_relabelled_labels', action='store_true',
-                        help=f'Add labels from {DatasetType.RELABELLED.value} dataset.')
+    parser.add_argument('--add_base_distribution', action='store_true',
+                        help='Use base distribution to initialize soft label targets.')
     parser.add_argument("--max_seq_length", default=128, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, "
                              "sequences shorter will be padded.")
@@ -64,8 +62,6 @@ def create_parser() -> argparse.ArgumentParser:
                         help="random seed for initialization")
     parser.add_argument('--resfile', type=str, default=None,
                         help='Append evaluation results to this file')
-    parser.add_argument('--relabel', action='store_true',
-                        help='If set, trained model will be used to relabel distant dataset')
 
     # General training parameters
     parser.add_argument('--framework', default='bond',
@@ -216,7 +212,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     # Evaluation
 
-    train_dataset = f'{dataset.value}+{args.add_gold_labels}gold{"+relabelled" if args.add_relabelled_labels else ""}'
+    train_dataset = f'{dataset.value}+{args.add_gold_labels}gold'
     added_gold = f'{args.add_gold_labels:.2f}'
     distant = 'with_distant' if args.add_distant else 'without_distant'
     model_name = args.framework
@@ -235,6 +231,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
         with open(args.resfile, 'a') as res:
             res.write(f'Results on valid: {results}\n')
 
+    dev_results = results
+
     results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
     logging.info('Results on test: ' + str(results))
     if args.resfile is not None:
@@ -250,14 +248,34 @@ def main(parser: argparse.ArgumentParser) -> Scores:
             res.write(f'Results on corrected test: {results}\n')
 
     corr_results = results
+    model_params = {
+        "bert_learning_rate": args.bert_learning_rate,
+        "head_learning_rate": args.head_learning_rate,
+        "batch_size": args.batch_size,
+        "bert_dropout": args.bert_dropout,
+        "head_dropout": args.head_dropout,
+        "ner_fit_epochs": args.ner_fit_epochs,
+        "warmup_proportion": args.warmup_proportion
+    }
+    if args.use_coregulation:
+        model_params = {**model_params, **{
+            "agreement_strength": args.agreement_strength,
+            "n_models": args.n_models
+        }}
+    if args.framework == 'bond':
+        model_params = {**model_params, **{
+            "self_training_epochs": args.self_training_epochs,
+            "label_keep_threshold": args.label_keep_threshold,
+            "self_training_lr_proportion": args.self_training_lr_proportion,
+            "start_updates": args.start_updates,
+            "end_updates": args.enc_updates
+        }}
 
     with open('results.csv', 'a') as res:
-        res.write(f'{model_name},{train_dataset},{added_gold},{distant},'
+        res.write(f'{model_name},{train_dataset},{added_gold},{distant},{model_params},'
                   f'{test_results["f1"]},{test_results["precision"]},{test_results["recall"]},'
-                  f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]}\n')
-
-    if args.relabel:
-        relabel_dataset(args, model, dataset, tokenizer)
+                  f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]},'
+                  f'{dev_results["f1"]},{dev_results["precision"]},{dev_results["recall"]}\n')
 
     return results
 

@@ -302,9 +302,7 @@ def convert_hard_to_soft_labels(labels, num_labels: int) -> FloatTensor:
     return one_hot(labels, num_labels).float()
 
 
-def create_one_hot_encoding(label_ids: Tuple[int, ...]) -> Tuple[Tuple[float, ...], ...]:
-    num_labels = max(label_ids) + 1
-
+def create_one_hot_encoding(label_ids: Tuple[int, ...], *, num_labels: int) -> Tuple[Tuple[float, ...], ...]:
     def one_hot_encode(label_id: int) -> Tuple[float, ...]:
         base = [0.0] * num_labels
         base[label_id] = 1.0

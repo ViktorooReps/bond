@@ -76,7 +76,7 @@ class SubTokenDataset(Dataset):
 
     @property
     def collate_fn(self) -> Callable:
-        return partial(collate_fn, pad_token=self._token_pad, pad_label=self._label_pad)
+        return partial(collate_fn, pad_token_id=self._token_pad, pad_label_id=self._label_pad)
 
     def __len__(self) -> int:
         return len(self._examples)
@@ -114,8 +114,8 @@ def get_dataset_entities(
 
     all_entities: List[Tuple[int, Entity]] = []
     example_idx = None  # if there are no examples then enumerate will not initialize example_idx
-    for example_idx, example in enumerate(get_examples(json_dataset, tokenizer, max_seq_length=max_seq_length)):
-        entities = list(extract_entities(example.label_ids, tags_dict))
+    for example_idx, example in enumerate(get_examples(json_dataset, tokenizer, num_labels=len(tags_dict), max_seq_length=max_seq_length)):
+        entities = list(extract_entities(example.label_ids.tolist(), tags_dict))
         all_entities.extend((example_idx, entity) for entity in entities)
 
     total_examples = 0 if example_idx is None else example_idx + 1
@@ -143,7 +143,7 @@ def load_dataset(
         max_seq_length: int
 ) -> SubTokenDataset:
 
-    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, f'seq{max_seq_length}']) + '.pt'
+    cached_dataset_name = '_'.join([dataset_name.value, *dataset_type.value.split('/'), tokenizer_name, f'seq{max_seq_length}']) + '.pkl'
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
     logging.info(f'Fetching {dataset_name.value} of type {dataset_type.value}...')
@@ -151,7 +151,8 @@ def load_dataset(
     if cached_dataset_file.exists():
         logging.info(f'Found cached version {cached_dataset_file}!')
 
-        dataset: SubTokenDataset = torch.load(cached_dataset_file)
+        with open(cached_dataset_file, 'rb') as f:
+            dataset: SubTokenDataset = pickle.load(f)
     else:
         logging.info(f'Cached version wasn\'t found, creating {cached_dataset_file}...')
 
@@ -162,10 +163,13 @@ def load_dataset(
         with open(dataset_file) as f:
             json_dataset = json.load(f)
 
-        dataset = SubTokenDataset(get_examples(json_dataset, tokenizer, max_seq_length=max_seq_length), token_pad=tokenizer.pad_token_id)
+        tags_dict = load_tags_dict(dataset_name)
+        dataset_examples = get_examples(json_dataset, tokenizer, num_labels=len(tags_dict), max_seq_length=max_seq_length)
+        dataset = SubTokenDataset(dataset_examples, token_pad=tokenizer.pad_token_id)
 
         # cache built dataset
-        torch.save(dataset, cached_dataset_file)
+        with open(cached_dataset_file, 'wb') as f:
+            pickle.dump(dataset, f)
 
     logging.info('Dataset loaded!')
 
@@ -207,7 +211,8 @@ def load_transformed_dataset(
     if cached_dataset_file.exists():
         logging.info(f'Found cached version {cached_dataset_file}!')
 
-        dataset: SubTokenDataset = torch.load(cached_dataset_file)
+        with open(cached_dataset_file, 'rb') as f:
+            dataset: SubTokenDataset = pickle.load(f)
     else:
         logging.info(f'Cached version wasn\'t found, creating {cached_dataset_file}...')
 
@@ -220,7 +225,7 @@ def load_transformed_dataset(
             distant_json_dataset = json.load(f)
 
         tags_dict = load_tags_dict(dataset_name)
-        extractor = partial(get_examples, tokenizer=tokenizer, max_seq_length=max_seq_length)
+        extractor = partial(get_examples, tokenizer=tokenizer, max_seq_length=max_seq_length, num_labels=len(tags_dict))
 
         def create_entity_mask(entities: Iterable[Entity], vector_len: int) -> Tuple[bool]:
             mask = [False] * vector_len

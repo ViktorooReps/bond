@@ -122,7 +122,7 @@ class BERTHead(nn.Module):
             self,
             seq_repr: Tensor,
             seq_lens: Iterable[int],
-            labeled_tokens_mask: Optional[BoolTensor] = None,
+            labeled_tokens_mask: BoolTensor,
             labels: Optional[LongTensor] = None,
             label_mask: Optional[BoolTensor] = None,
             self_training: bool = False,
@@ -132,6 +132,9 @@ class BERTHead(nn.Module):
 
         loss is returned only when labels are given
         label_mask is returned because it might change"""
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        seq_repr = seq_repr.to(device)
+        labeled_tokens_mask = labeled_tokens_mask.to(device)
 
         seq_lens = tuple(seq_lens)
 
@@ -170,6 +173,8 @@ class BERTHead(nn.Module):
         outputs = (label_probs,)
 
         if labels is not None:
+            labels = labels.to(device)
+            label_mask = label_mask.to(device)
 
             if labels.shape != label_probs.shape:
                 # convert hard labels into one-hots
@@ -284,11 +289,13 @@ class RobertaWithHead(BertPreTrainedModel):
     def returns_probs(self) -> bool:
         return self.head.returns_probs
 
-    def forward(self, examples: BatchedExamples, self_training: bool = False, use_kldiv_loss: bool = False):
-        attention_mask = examples.token_padding_mask
+    def forward(self, examples: BatchedExamples, self_training: bool = False, use_kldiv_loss: bool = False, **argv):
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+        attention_mask = examples.token_padding_mask.to(device)
         seq_lens = [mask.sum() for mask in attention_mask]
 
-        input_ids = examples.token_ids
+        input_ids = examples.token_ids.to(device)
 
         outputs: BaseModelOutputWithPoolingAndCrossAttentions
 
