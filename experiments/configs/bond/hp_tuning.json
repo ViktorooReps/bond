@@ -23,16 +23,16 @@
         "--adam_beta1=0.9",
         "--adam_beta2=0.999",
         "--no_entity_weight=0.7",
-        "--warmup_proportion=1.0",
-        "--ner_fit_epochs=0",
+        ["--warmup_proportion=0.1", "--warmup_proportion=0.5", "--warmup_proportion=1.0"],
+        ["--ner_fit_epochs=0", "--ner_fit_epochs=1", "--ner_fit_epochs=2"],
         "--use_linear_scheduler",
         ["--self_training_lr_proportion=0.3", "--self_training_lr_proportion=0.2", "--self_training_lr_proportion=0.1"],
         "--correct_frequency",
         "--use_kldiv_loss",
         "--label_keep_threshold=0.9",
         ["--self_training_epochs=2", "--self_training_epochs=3", "--self_training_epochs=5"],
-        ["--start_updates=8.0", "--start_updates=4.0", "--start_updates=2.0"],
-        ["--end_updates=2.0", "--end_updates=1.0", "--end_updates=0.5"],
+        "--start_updates=2.0",
+        "--end_updates=1.0",
         "--seed=42"
     ]
 }
