@@ -1,5 +1,6 @@
 {
-    "config_name": "baseline-no-distant",
+    "output": "logs/hp_tune.log",
+    "config_name": "hp-tuning",
     "memory_needed": 10.0,
     "command": "python train.py",
     "args": [
