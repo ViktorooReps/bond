@@ -1,7 +1,7 @@
 {
     "output": "logs/hp_tune.log",
     "config_name": "hp-tuning",
-    "memory_needed": 10.0,
+    "memory_needed": 7.0,
     "command": "python train.py",
     "args": [
         "--logging=10000000",
@@ -14,8 +14,8 @@
         "--gradient_accumulation_steps=1",
         "--max_seq_len=512",
         "--batch_size=4",
-        ["--head_dropout=0.3", "--head_dropout=0.4", "--head_dropout=0.5", "--head_dropout=0.6", "--head_dropout=0.7", "--head_dropout=0.8", "--head_dropout=0.9"],
-        ["--bert_dropout=0.05", "--bert_dropout=0.1", "--bert_dropout=0.15", "--bert_dropout=0.2"],
+        "--head_dropout=0.3",
+        "--bert_dropout=0.1",
         "--learning_rate=5e-05",
         "--weight_decay=1e-04",
         "--adam_epsilon=1e-06",
