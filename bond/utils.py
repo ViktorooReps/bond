@@ -145,7 +145,7 @@ def correct_label_distributions(gold_entities: Iterable[Entity], label_distribut
             # set to zero every non-begin and non-O labels
             new_label_distributions[next_idx][in_entity_labels_mask] = 0.0
 
-    new_label_distributions /= new_label_distributions.sum(dim=0)  # make new distributions mathematically correct
+    new_label_distributions /= new_label_distributions.sum(dim=-1).unsqueeze(-1)  # make new distributions mathematically correct
     return new_label_distributions
 
 
