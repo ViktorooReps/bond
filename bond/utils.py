@@ -122,6 +122,33 @@ def convert_entities_to_labels(entities: Iterable[Entity], no_entity_label: int,
     return tuple(result)
 
 
+def correct_label_distributions(gold_entities: Iterable[Entity], label_distributions: Tensor, tags_dict: Dict[str, int]) -> Tensor:
+    labels_dict = {label: tag for tag, label in tags_dict.items()}
+    in_entities = {tag for tag in tags_dict if tag.startswith('I')}
+
+    in_entity_labels_mask = torch.tensor([(label in in_entities) for label in labels_dict], dtype=torch.bool)
+
+    new_label_distributions = label_distributions.detach().clone()
+    for entity in gold_entities:
+        entity_start, entity_labels = entity
+        label_idx = None
+        for label_idx, label in zip(range(entity_start, entity_start + len(entity_labels)), entity_labels):
+            # create sharp distribution
+            new_label_distributions[label_idx] = 0.0
+            new_label_distributions[label_idx][label] = 1.0
+
+        if label_idx is None:
+            raise ValueError(f'Illegal entity {entity}!')
+
+        next_idx = label_idx + 1
+        if next_idx < len(new_label_distributions):
+            # set to zero every non-begin and non-O labels
+            new_label_distributions[next_idx][in_entity_labels_mask] = 0.0
+
+    new_label_distributions /= new_label_distributions.sum(dim=0)  # make new distributions mathematically correct
+    return new_label_distributions
+
+
 def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags_dict: Dict[str, int]) -> Scores:
     gold_entities = set(extract_entities(gold_labels, tags_dict))
     predicted_entities = set(extract_entities(predicted_labels, tags_dict))
