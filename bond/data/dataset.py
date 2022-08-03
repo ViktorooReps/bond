@@ -14,7 +14,8 @@ from transformers import PreTrainedTokenizer
 
 from bond.data.batching import collate_fn
 from bond.data.example import Example, get_examples
-from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels, correct_label_distributions
+from bond.utils import extract_entities, merge_entity_lists, convert_entities_to_labels, correct_label_distributions, \
+    convert_hard_to_soft_labels
 
 PAD_LABEL_ID = -1
 DEFAULT_WEIGHT = 1.0
@@ -278,7 +279,10 @@ def load_transformed_dataset(
             label_ids = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=orig_len)
             torch_label_ids = torch.tensor(label_ids, dtype=torch.long).long()
 
-            torch_label_distributions = correct_label_distributions(gold_entities, example.label_distributions, tags_dict)
+            if add_base_distribution:
+                torch_label_distributions = correct_label_distributions(gold_entities, example.label_distributions, tags_dict)
+            else:
+                torch_label_distributions = convert_hard_to_soft_labels(torch_label_ids, len(tags_dict))
 
             new_examples.append(example.with_changes(
                 label_ids=torch_label_ids,
