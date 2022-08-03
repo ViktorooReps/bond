@@ -270,7 +270,7 @@ def load_transformed_dataset(
 
         new_examples: List[Example] = []
         for gold_entities, distant_entities, example in zip(all_gold_entities, all_distant_entities, examples):
-            orig_len = len(example.label_ids)
+            orig_len = len(example.token_ids)
             gold_entities_mask = create_entity_mask(gold_entities, vector_len=orig_len)
             torch_gold_entities_mask = torch.tensor(gold_entities_mask, dtype=torch.bool).bool()
 
