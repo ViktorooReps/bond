@@ -25,9 +25,9 @@
         "--no_entity_weight=0.7",
         "--use_coregulation",
         "--n_models=3",
-        ["--agreement_strength=200.0", "--agreement_strength=300.0", "--agreement_strength=400.0", "--agreement_strength=500.0"],
+        "--agreement_strength=200.0",
         "--warmup_proportion=0.2",
-        ["--ner_fit_epochs=7", "--ner_fit_epochs=10", "--ner_fit_epochs=13"],
+        "--ner_fit_epochs=7",
         "--use_linear_scheduler",
         "--seed=42"
     ]
