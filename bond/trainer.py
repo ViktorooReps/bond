@@ -1,6 +1,8 @@
 import logging
+from argparse import Namespace
 from copy import deepcopy
 from enum import Enum
+from pathlib import Path
 from typing import List
 
 import torch
@@ -9,7 +11,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from bond.data.batching import BatchedExamples
-from bond.data.dataset import DatasetName, DatasetType, load_transformed_dataset, load_dataset, load_tags_dict
+from bond.data.dataset import DatasetName, DatasetType, load_transformed_dataset, load_dataset, load_tags_dict, SubTokenDataset
 from bond.utils import Scores, initialize_roberta, ner_scores, soft_frequency, convert_hard_to_soft_labels
 
 try:
@@ -23,8 +25,7 @@ class TrainingFramework(Enum):
     SUPERVISED = 'supervised'
 
 
-def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer) -> Scores:
-    eval_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+def evaluate(args: Namespace, model: PreTrainedModel, eval_dataset: SubTokenDataset, dataset_name: DatasetName) -> Scores:
     eval_sampler = SequentialSampler(eval_dataset)
     batch_size = args.batch_size * 2
     eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=batch_size, collate_fn=eval_dataset.collate_fn)
@@ -35,7 +36,7 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
     true_labels: List[int] = []
 
     model.eval()
-    for batch in tqdm(eval_dataloader, desc=f"Evaluating on {dataset_type.value} dataset", leave=False):
+    for batch in tqdm(eval_dataloader, desc=f"Evaluating", leave=False):
         batch: BatchedExamples
         with torch.no_grad():
             with torch.cuda.amp.autocast():
@@ -58,30 +59,42 @@ def evaluate(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: D
         true_labels.extend(batch_true_labels.tolist())
 
     eval_loss = eval_loss / nb_eval_steps
-    results = ner_scores(true_labels, predicted_labels, load_tags_dict(dataset))
+    results = ner_scores(true_labels, predicted_labels, load_tags_dict(dataset_name))
     results['loss'] = eval_loss
 
     return results
 
 
-def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
-               tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
-    """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
+def prepare_dataset(args: Namespace, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer) -> SubTokenDataset:
     if dataset_type == DatasetType.DISTANT:
-        train_dataset = load_transformed_dataset(
+        ds = load_transformed_dataset(
             dataset, args.add_gold_labels, tokenizer, args.model_name,
             max_seq_length=args.max_seq_length,
-            add_base_distribution=args.add_base_distribution,
+            base_distributions_file=args.base_distributions_file,
             add_distant=args.add_distant
         )
     else:
-        train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+        ds = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+
+    return ds
+
+
+def train_bond(
+        args: Namespace,
+        model: PreTrainedModel,
+        dataset_name: DatasetName,
+        train_dataset: SubTokenDataset,
+        eval_dataset: SubTokenDataset,
+        tb_writer: SummaryWriter,
+        amp_scaler: torch.cuda.amp.GradScaler
+):
+    """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
-    num_labels = len(load_tags_dict(dataset).keys())
+    num_labels = len(load_tags_dict(dataset_name).keys())
 
     gradient_accumulation_steps = args.gradient_accumulation_steps
 
@@ -99,8 +112,11 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     warmup_batches = warmup_steps * gradient_accumulation_steps
 
     # prepare scheduler for NER fitting stage
-    model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=warmup_steps,
-                                                     end_lr_proportion=args.self_training_lr_proportion)
+    model, optimizer, scheduler = initialize_roberta(
+        args, model, total_steps,
+        warmup_steps=warmup_steps,
+        end_lr_proportion=args.self_training_lr_proportion
+    )
 
     # Train!
 
@@ -180,7 +196,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
             if examples_from_last_log >= args.logging:
                 # Log metrics
-                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+                results = evaluate(args, model, eval_dataset, dataset_name)
                 results = {k + '_dev': v for k, v in results.items()}
                 log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log}, 'ner')
                 logging_loss = tr_loss
@@ -278,7 +294,7 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
 
             if examples_from_last_log >= args.logging:
                 # Log metrics
-                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+                results = evaluate(args, model, eval_dataset, dataset_name)
                 results = {k + '_dev': v for k, v in results.items()}
                 log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log}, 'self_training')
                 logging_loss = tr_loss
@@ -290,19 +306,16 @@ def train_bond(args, model: PreTrainedModel, dataset: DatasetName, dataset_type:
     return model
 
 
-def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, tokenizer: PreTrainedTokenizer,
-                     tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
+def train_supervised(
+        args: Namespace,
+        model: PreTrainedModel,
+        dataset_name: DatasetName,
+        train_dataset: SubTokenDataset,
+        eval_dataset: SubTokenDataset,
+        tb_writer: SummaryWriter,
+        amp_scaler: torch.cuda.amp.GradScaler
+):
     """Train model for ner_fit_epochs epochs"""
-
-    if dataset_type == DatasetType.DISTANT:
-        train_dataset = load_transformed_dataset(
-            dataset, args.add_gold_labels, tokenizer, args.model_name,
-            max_seq_length=args.max_seq_length,
-            add_base_distribution=args.add_base_distribution,
-            add_distant=args.add_distant
-        )
-    else:
-        train_dataset = load_dataset(dataset, dataset_type, tokenizer, args.model_name, args.max_seq_length)
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.batch_size, collate_fn=train_dataset.collate_fn)
@@ -402,7 +415,7 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
 
             if examples_from_last_log >= args.logging:
                 # Log metrics
-                results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+                results = evaluate(args, model, eval_dataset, dataset_name)
                 results = {k + '_dev': v for k, v in results.items()}
                 log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log}, 'ner')
                 logging_loss = tr_loss
@@ -412,13 +425,23 @@ def train_supervised(args, model: PreTrainedModel, dataset: DatasetName, dataset
     return model
 
 
-def train(args, model: PreTrainedModel, dataset: DatasetName, dataset_type: DatasetType, training_framework: TrainingFramework,
-          tokenizer: PreTrainedTokenizer, tb_writer: SummaryWriter, amp_scaler: torch.cuda.amp.GradScaler):
+def train(
+        args: Namespace,
+        model: PreTrainedModel,
+        dataset_name: DatasetName,
+        train_dataset: SubTokenDataset,
+        eval_dataset: SubTokenDataset,
+        training_framework: TrainingFramework,
+        tb_writer: SummaryWriter
+):
     """Train model for ner_fit_epochs epochs then do self training for self_training_epochs epochs"""
+
+    amp_scaler = torch.cuda.amp.GradScaler()
+
     if training_framework == TrainingFramework.BOND:
-        return train_bond(args, model, dataset, dataset_type, tokenizer, tb_writer, amp_scaler)
+        return train_bond(args, model, dataset_name, train_dataset, eval_dataset, tb_writer, amp_scaler)
     elif training_framework == TrainingFramework.SUPERVISED:
         args.self_training_epochs = 0
-        return train_supervised(args, model, dataset, dataset_type, tokenizer, tb_writer, amp_scaler)
+        return train_supervised(args, model, dataset_name, train_dataset, eval_dataset, tb_writer, amp_scaler)
     else:
         raise ValueError(f'Unsupported training framework {training_framework.value}!')

@@ -4,13 +4,15 @@ import os
 import sys
 import warnings
 from pathlib import Path
+from typing import Type
 
 import torch
-from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel
+from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel, PretrainedConfig, \
+    PreTrainedTokenizer
 
-from bond.data.dataset import DatasetType, DatasetName, load_tags_dict
+from bond.data.dataset import DatasetType, DatasetName, load_tags_dict, load_dataset
 from bond.model import PoolingStrategy, RobertaWithHead, CoregulatedModel
-from bond.trainer import TrainingFramework, evaluate, train
+from bond.trainer import TrainingFramework, evaluate, train, prepare_dataset
 from bond.utils import Scores, set_seed
 
 try:
@@ -49,9 +51,11 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Add fraction of gold labels to dataset to simulate partial annotation.')
     parser.add_argument('--add_distant', action='store_true',
                         help='Add distantly labelled entities to training data')
-    parser.add_argument('--add_base_distribution', action='store_true',
+    parser.add_argument('--base_distributions_file', type=Path,
                         help='Use base distribution to initialize soft label targets.')
-    parser.add_argument("--max_seq_length", default=128, type=int,
+    parser.add_argument('--k_folds', type=int, default=2,
+                        help='Number of folds to split dataset into for base distribution evaluation.')
+    parser.add_argument("--max_seq_length", default=512, type=int,
                         help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated, "
                              "sequences shorter will be padded.")
     parser.add_argument("--no_cuda", action="store_true",
@@ -148,8 +152,40 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(parser: argparse.ArgumentParser) -> Scores:
-    args = parser.parse_args()
+def get_model(args: argparse.Namespace, model_class: Type[PreTrainedModel], config_class: Type[PretrainedConfig], num_labels: int):
+    config = config_class.from_pretrained(
+        args.model_name,
+        num_labels=num_labels,
+        output_hidden_states=True,
+        hidden_dropout_prob=args.bert_dropout,
+        attention_probs_dropout_prob=args.bert_dropout
+    )
+
+    def model_generator() -> PreTrainedModel:
+        return model_class.from_pretrained(
+            args.model_name,
+            config=config,
+            freeze_bert=args.freeze_bert,
+            pooler=PoolingStrategy(args.pooler),
+            subword_repr_size=args.subword_repr_size,
+            add_lstm=args.add_lstm,
+            lstm_hidden=args.lstm_hidden_size,
+            lstm_layers=args.lstm_num_layers,
+            lstm_dropout=args.lstm_dropout,
+            head_dropout=args.head_dropout,
+            add_crf=args.add_crf,
+            no_entity_weight=args.no_entity_weight
+        ).to(args.device)
+
+    if args.use_coregulation:
+        model = CoregulatedModel(num_labels, model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
+    else:
+        model = model_generator()
+
+    return model
+
+
+def setup_logging(args: argparse.Namespace) -> SummaryWriter:
     run_name = os.environ['TASK_NAME']
     experiment_name = ('distant' if args.add_distant else 'no_distant') + f'gold{args.add_gold_labels:.2f}'
 
@@ -170,69 +206,31 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     if not log_dir.exists():
         os.makedirs(log_dir)
 
-    logging.basicConfig(format='[%(asctime)s] %(message)s',
-                        handlers=[logging.FileHandler(os.path.join(log_dir, log_name)), logging.StreamHandler(sys.stdout)],
-                        level=logging.INFO)
-    tb_writer = SummaryWriter(os.path.join(tb_dir, run_name))
+    logging.basicConfig(
+        format='[%(asctime)s] %(message)s',
+        handlers=[logging.FileHandler(os.path.join(log_dir, log_name)), logging.StreamHandler(sys.stdout)],
+        level=logging.INFO
+    )
+    return SummaryWriter(os.path.join(tb_dir, run_name))
 
-    if args.head_learning_rate is None:
-        args.head_learning_rate = args.learning_rate
-    if args.bert_learning_rate is None:
-        args.bert_learning_rate = args.learning_rate
 
-    logging.info('Arguments: ' + str(args))
-
-    amp_scaler = torch.cuda.amp.GradScaler()
-
-    dataset = DatasetName(args.dataset)
-    dataset_type = DatasetType(args.dataset_type)
-
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-    args.device = device
-    args.n_gpu = 1
-
-    set_seed(args.seed)
-    num_labels = len(load_tags_dict(dataset).keys())
-
-    # Load pretrained model and tokenizer
-    args.model_type = args.model_type.lower()
-    config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    config = config_class.from_pretrained(args.model_name, num_labels=num_labels, output_hidden_states=True,
-                                          hidden_dropout_prob=args.bert_dropout,
-                                          attention_probs_dropout_prob=args.bert_dropout)
-    tokenizer = tokenizer_class.from_pretrained(args.model_name)
-
-    def model_generator() -> PreTrainedModel:
-        return model_class.from_pretrained(args.model_name, config=config, freeze_bert=args.freeze_bert,
-                                           pooler=PoolingStrategy(args.pooler), subword_repr_size=args.subword_repr_size,
-                                           add_lstm=args.add_lstm, lstm_hidden=args.lstm_hidden_size, lstm_layers=args.lstm_num_layers,
-                                           lstm_dropout=args.lstm_dropout, head_dropout=args.head_dropout, add_crf=args.add_crf,
-                                           no_entity_weight=args.no_entity_weight).to(device)
-
-    # Training
-    if args.use_coregulation:
-        model = CoregulatedModel(num_labels, model_generator, n_models=args.n_models, agreement_strength=args.agreement_strength)
-    else:
-        model = model_generator()
-
-    model = train(args, model, dataset, dataset_type, TrainingFramework(args.framework), tokenizer, tb_writer, amp_scaler)
-
-    # Evaluation
-
-    train_dataset = dataset.value
+def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_name: DatasetName, tokenizer: PreTrainedTokenizer) -> Scores:
+    train_dataset = dataset_name.value
     added_gold = f'{args.add_gold_labels:.2f}'
     distant = 'with_distant' if args.add_distant else 'without_distant'
     model_name = args.framework
     if args.use_coregulation:
         model_name += '_coregularized'
 
-    results = evaluate(args, model, dataset, DatasetType.TRAIN, tokenizer)
+    dataset = load_dataset(dataset_name, DatasetType.TRAIN, tokenizer, args.model_name, args.max_seq_length)
+    results = evaluate(args, model, dataset, dataset_name)
     logging.info('Results on train: ' + str(results))
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
             res.write(f'Results on train: {results}\n')
 
-    results = evaluate(args, model, dataset, DatasetType.VALID, tokenizer)
+    dataset = load_dataset(dataset_name, DatasetType.VALID, tokenizer, args.model_name, args.max_seq_length)
+    results = evaluate(args, model, dataset, dataset_name)
     logging.info('Results on valid: ' + str(results))
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
@@ -240,7 +238,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     dev_results = results
 
-    results = evaluate(args, model, dataset, DatasetType.TEST, tokenizer)
+    dataset = load_dataset(dataset_name, DatasetType.TEST, tokenizer, args.model_name, args.max_seq_length)
+    results = evaluate(args, model, dataset, dataset_name)
     logging.info('Results on test: ' + str(results))
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
@@ -248,7 +247,8 @@ def main(parser: argparse.ArgumentParser) -> Scores:
 
     test_results = results
 
-    results = evaluate(args, model, dataset, DatasetType.TEST_CORRECTED, tokenizer)
+    dataset = load_dataset(dataset_name, DatasetType.TEST_CORRECTED, tokenizer, args.model_name, args.max_seq_length)
+    results = evaluate(args, model, dataset, dataset_name)
     logging.info('Results on corrected test: ' + str(results))
     if args.resfile is not None:
         with open(args.resfile, 'a') as res:
@@ -284,6 +284,41 @@ def main(parser: argparse.ArgumentParser) -> Scores:
                   f'{dev_results["f1"]},{dev_results["precision"]},{dev_results["recall"]}\n')
 
     return results
+
+
+def main(parser: argparse.ArgumentParser) -> Scores:
+    args = parser.parse_args()
+    tb_writer = setup_logging(args)
+
+    if args.head_learning_rate is None:
+        args.head_learning_rate = args.learning_rate
+    if args.bert_learning_rate is None:
+        args.bert_learning_rate = args.learning_rate
+
+    logging.info('Arguments: ' + str(args))
+
+    dataset_name = DatasetName(args.dataset)
+    dataset_type = DatasetType(args.dataset_type)
+
+    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
+    args.device = device
+    args.n_gpu = 1
+
+    set_seed(args.seed)
+    num_labels = len(load_tags_dict(dataset_name).keys())
+
+    # Load pretrained model and tokenizer
+    args.model_type = args.model_type.lower()
+    config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    tokenizer = tokenizer_class.from_pretrained(args.model_name)
+    model = get_model(args, model_class, config_class, num_labels)
+
+    train_dataset = prepare_dataset(args, dataset_name, dataset_type, tokenizer)
+    eval_dataset = load_dataset(dataset_name, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+
+    model = train(args, model, dataset_name, train_dataset, eval_dataset, TrainingFramework(args.framework), tb_writer)
+
+    return run_evaluation(args, model, dataset_name, tokenizer)
 
 
 if __name__ == '__main__':

@@ -2,13 +2,16 @@ import json
 import logging
 import os
 import pickle
+from copy import deepcopy
 from enum import Enum
 from functools import partial
 from pathlib import Path
 from random import shuffle
-from typing import Tuple, Dict, Iterable, Callable, List
+from typing import Tuple, Dict, Iterable, Callable, List, Union, Optional
 
+import numpy as np
 import torch
+from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
@@ -71,7 +74,7 @@ def load_label_extensions(dataset_name: DatasetName) -> Dict[int, int]:
 class SubTokenDataset(Dataset):
 
     def __init__(self, examples: Iterable[Example], token_pad: int, label_pad: int = PAD_LABEL_ID):
-        self._examples = tuple(examples)
+        self._examples = np.array(tuple(examples))
         self._token_pad = token_pad
         self._label_pad = label_pad
 
@@ -79,11 +82,21 @@ class SubTokenDataset(Dataset):
     def collate_fn(self) -> Callable:
         return partial(collate_fn, pad_token_id=self._token_pad, pad_label_id=self._label_pad)
 
+    @property
+    def examples(self) -> NDArray:
+        return self._examples
+
+    def sub_dataset(self, indices: Union[List[int], List[bool], NDArray]) -> 'SubTokenDataset':
+        return SubTokenDataset(deepcopy(self._examples[indices]), token_pad=self._token_pad, label_pad=self._label_pad)
+
     def __len__(self) -> int:
         return len(self._examples)
 
-    def __getitem__(self, idx: int) -> Example:
+    def __getitem__(self, idx: Union[int, List[int], List[bool], NDArray]) -> Example:
         return self._examples[idx]
+
+    def __setitem__(self, idx: Union[int, List[int], List[bool], NDArray], values: Union[Example, List[Example], NDArray]):
+        self._examples[idx] = values
 
 
 def get_dataset_entities(
@@ -177,6 +190,32 @@ def load_dataset(
     return dataset
 
 
+def get_transformed_dataset_name(
+        dataset_name: DatasetName,
+        add_gold: float,
+        tokenizer_name: str,
+        *,
+        max_seq_length: int = 512,
+        base_distributions_file: Optional[Path] = None,
+        add_distant: bool = False
+) -> str:
+
+    extra_qualifiers = []
+    if base_distributions_file is not None:
+        extra_qualifiers.append('based__' + base_distributions_file.with_suffix('').name + '__')
+    if add_distant:
+        extra_qualifiers.append('distant')
+
+    return '_'.join([
+        dataset_name.value,
+        'merged',
+        str(add_gold),
+        *extra_qualifiers,
+        tokenizer_name,
+        f'seq{max_seq_length}'
+    ])
+
+
 def load_transformed_dataset(
         dataset_name: DatasetName,
         add_gold: float,
@@ -184,30 +223,22 @@ def load_transformed_dataset(
         tokenizer_name: str,
         *,
         max_seq_length: int = 512,
-        add_base_distribution: bool = False,
+        base_distributions_file: Optional[Path] = None,
         add_distant: bool = False
 ) -> SubTokenDataset:
 
-    extra_qualifiers = []
-    if add_base_distribution:
-        extra_qualifiers.append('based')
-    if add_distant:
-        extra_qualifiers.append('distant')
-
-    cached_dataset_name = '_'.join([
-        dataset_name.value,
-        'merged',
-        str(add_gold),
-        *extra_qualifiers,
-        tokenizer_name,
-        f'seq{max_seq_length}'
-    ]) + '.pkl'
+    cached_dataset_name = get_transformed_dataset_name(
+        dataset_name, add_gold, tokenizer_name,
+        max_seq_length=max_seq_length,
+        base_distributions_file=base_distributions_file,
+        add_distant=add_distant
+    ) + '.pkl'
 
     cached_dataset_file = Path(os.path.join('cache', 'datasets', cached_dataset_name))
 
     logging.info(f'Fetching transformed {dataset_name.value} with {add_gold} gold entities'
                  f'{" and distant entities" if add_distant else ""}'
-                 f'{" and base distribution" if add_base_distribution else ""}...')
+                 f'{" and base distribution from " + str(base_distributions_file) if base_distributions_file is not None else ""}...')
 
     if cached_dataset_file.exists():
         logging.info(f'Found cached version {cached_dataset_file}!')
@@ -245,17 +276,16 @@ def load_transformed_dataset(
             distant_entities = list(extract_entities(example.label_ids.tolist(), tags_dict)) if add_distant else []
             all_distant_entities.append(distant_entities)
 
-        if add_base_distribution:
-            based_dataset_file = Path(os.path.join('dataset', 'data', dataset_name.value, DatasetType.BASED.value + '.json'))
-            if not based_dataset_file.exists():
-                raise ValueError(f'{based_dataset_file} does not exist!')
+        if base_distributions_file is not None:
+            if not base_distributions_file.exists():
+                raise ValueError(f'{base_distributions_file} does not exist!')
 
-            with open(based_dataset_file) as f:
-                relabelled_json_dataset = json.load(f)
+            with open(base_distributions_file, 'rb') as f:
+                base_distributions_dataset: SubTokenDataset = pickle.load(f)
 
             based_examples: List[Example] = []
 
-            for based_example, old_example in zip(extractor(relabelled_json_dataset), examples):
+            for based_example, old_example in zip(base_distributions_dataset.examples, examples):
                 based_example: Example
                 based_examples.append(old_example.with_changes(label_distributions=based_example.label_distributions))
 

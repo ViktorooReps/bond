@@ -1,10 +1,11 @@
 flair==0.10
-torch==1.10.2
-tqdm~=4.62.3
+torch~=1.12.0
+tqdm~=4.64.0
 tensorboardX~=2.4.1
-transformers~=4.13.0
-numpy~=1.19.5
+transformers~=4.20.1
+numpy~=1.22.3
 seaborn~=0.11.2
 pandas~=1.1.5
 nvitop~=0.5.4
 triage-runner~=0.1.4
+scikit-learn~=1.1.1
