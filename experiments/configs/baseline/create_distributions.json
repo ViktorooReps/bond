@@ -10,6 +10,7 @@
         "--resfile=res.final.txt",
         "--dataset=conll03",
         "--dataset_type=gold/train",
+        "--add_gold_labels=0.05",
         "--model_type=roberta",
         "--model_name=roberta-base",
         "--gradient_accumulation_steps=1",
