@@ -4,10 +4,10 @@
     "memory_needed": 7.0,
     "command": "python train.py",
     "args": [
-        ["--base_distributions_file=supervised_on_conll03_merged_0.05_roberta-base_seq512_2folds.pkl",
-          "--base_distributions_file=supervised_on_conll03_merged_0.05_roberta-base_seq512_3folds.pkl",
-          "--base_distributions_file=supervised_on_conll03_merged_0.05_roberta-base_seq512_5folds.pkl",
-          "--base_distributions_file=supervised_on_conll03_merged_0.05_roberta-base_seq512_10folds.pkl"
+        ["--base_distributions_file=cache/datasets/supervised_on_conll03_merged_0.05_roberta-base_seq512_2folds.pkl",
+          "--base_distributions_file=cache/datasets/supervised_on_conll03_merged_0.05_roberta-base_seq512_3folds.pkl",
+          "--base_distributions_file=cache/datasets/supervised_on_conll03_merged_0.05_roberta-base_seq512_5folds.pkl",
+          "--base_distributions_file=cache/datasets/supervised_on_conll03_merged_0.05_roberta-base_seq512_10folds.pkl"
         ],
         "--logging=10000000",
         "--framework=supervised",
