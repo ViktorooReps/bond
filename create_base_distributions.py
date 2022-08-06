@@ -36,7 +36,7 @@ def eval_base_distributions(args: argparse.Namespace, model: PreTrainedModel, da
         batch = batch.without_labels()
         with torch.no_grad():
             with torch.cuda.amp.autocast():
-                logits = model(batch)
+                logits = model(batch)[0]
 
         batch_predicted_distributions = softmax(logits, dim=-1)
         label_padding_mask = batch.token_padding_mask[batch.labeled_token_mask]

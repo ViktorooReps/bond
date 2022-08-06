@@ -309,7 +309,7 @@ def load_transformed_dataset(
             label_ids = convert_entities_to_labels(merged_entities, no_entity_label=tags_dict['O'], vector_len=orig_len)
             torch_label_ids = torch.tensor(label_ids, dtype=torch.long).long()
 
-            if add_base_distribution:
+            if base_distributions_file is not None:
                 torch_label_distributions = correct_label_distributions(gold_entities, example.label_distributions, tags_dict)
             else:
                 torch_label_distributions = convert_hard_to_soft_labels(torch_label_ids, len(tags_dict))
