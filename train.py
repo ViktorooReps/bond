@@ -256,6 +256,7 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
 
     corr_results = results
     model_params = {
+        "base_distributions_file": args.base_distributions_file.name,
         "learning_rate": args.learning_rate,
         "batch_size": args.batch_size,
         "bert_dropout": args.bert_dropout,
