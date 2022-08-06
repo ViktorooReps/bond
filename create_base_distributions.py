@@ -15,7 +15,8 @@ from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from bond.data.batching import BatchedExamples
-from bond.data.dataset import DatasetName, DatasetType, load_tags_dict, load_dataset, SubTokenDataset, get_transformed_dataset_name
+from bond.data.dataset import DatasetName, DatasetType, load_tags_dict, load_dataset, SubTokenDataset, get_transformed_dataset_name, \
+    get_based_dataset_name
 from bond.data.example import Example
 from bond.trainer import train, TrainingFramework, prepare_dataset
 from bond.utils import set_seed
@@ -98,14 +99,7 @@ def main(parser: argparse.ArgumentParser):
     if args.use_coregulation:
         model_name += '_coregularized'
 
-    trained_dataset_name = get_transformed_dataset_name(
-        dataset_name, args.add_gold_labels, args.model_name,
-        max_seq_length=args.max_seq_length,
-        base_distributions_file=args.base_distributions_file,
-        add_distant=args.add_distant
-    )
-
-    based_dataset_name = model_name + '_on_' + trained_dataset_name + f'_{args.k_folds}folds.pkl'
+    based_dataset_name = get_based_dataset_name(args, dataset_name, model_name)
 
     based_dataset_file = Path(os.path.join('cache', 'datasets', based_dataset_name))
 

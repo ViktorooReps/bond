@@ -10,7 +10,7 @@ import torch
 from transformers import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer, PreTrainedModel, PretrainedConfig, \
     PreTrainedTokenizer
 
-from bond.data.dataset import DatasetType, DatasetName, load_tags_dict, load_dataset
+from bond.data.dataset import DatasetType, DatasetName, load_tags_dict, load_dataset, get_based_dataset_name
 from bond.model import PoolingStrategy, RobertaWithHead, CoregulatedModel
 from bond.trainer import TrainingFramework, evaluate, train, prepare_dataset
 from bond.utils import Scores, set_seed
@@ -51,8 +51,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Add fraction of gold labels to dataset to simulate partial annotation.')
     parser.add_argument('--add_distant', action='store_true',
                         help='Add distantly labelled entities to training data')
-    parser.add_argument('--base_distributions_file', type=Path,
-                        help='Use base distribution to initialize soft label targets.')
+    parser.add_argument('--base_model', type=str,
+                        help='Model that was used to obtain base distributions. Options: supervised, bond')
     parser.add_argument('--k_folds', type=int, default=2,
                         help='Number of folds to split dataset into for base distribution evaluation.')
     parser.add_argument("--max_seq_length", default=512, type=int,
@@ -291,15 +291,20 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     args = parser.parse_args()
     tb_writer = setup_logging(args)
 
+    dataset_name = DatasetName(args.dataset)
+    dataset_type = DatasetType(args.dataset_type)
+
     if args.head_learning_rate is None:
         args.head_learning_rate = args.learning_rate
     if args.bert_learning_rate is None:
         args.bert_learning_rate = args.learning_rate
 
-    logging.info('Arguments: ' + str(args))
+    args.base_distributions_file = None
+    if args.base_model is not None:
+        based_dataset_name = get_based_dataset_name(args, dataset_name, args.base_model)
+        args.base_distributions_file = Path(os.path.join('cache', 'datasets', based_dataset_name))
 
-    dataset_name = DatasetName(args.dataset)
-    dataset_type = DatasetType(args.dataset_type)
+    logging.info('Arguments: ' + str(args))
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     args.device = device

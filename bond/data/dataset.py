@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import pickle
+from argparse import Namespace
 from copy import deepcopy
 from enum import Enum
 from functools import partial
@@ -214,6 +215,17 @@ def get_transformed_dataset_name(
         tokenizer_name,
         f'seq{max_seq_length}'
     ])
+
+
+def get_based_dataset_name(args: Namespace, dataset_name: DatasetName, model_name: str):
+    trained_dataset_name = get_transformed_dataset_name(
+        dataset_name, args.add_gold_labels, args.model_name,
+        max_seq_length=args.max_seq_length,
+        base_distributions_file=args.base_distributions_file,
+        add_distant=args.add_distant
+    )
+
+    return model_name + '_on_' + trained_dataset_name + f'_{args.k_folds}folds.pkl'
 
 
 def load_transformed_dataset(
