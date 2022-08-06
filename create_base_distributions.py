@@ -83,6 +83,8 @@ def main(parser: argparse.ArgumentParser):
     based_dataset = deepcopy(train_dataset)
 
     for train_index, eval_index in splitter.split(train_dataset):
+        train_index = np.ndarray(train_index, dtype=int)
+        eval_index = np.ndarray(eval_index, dtype=int)
         train_fold = train_dataset.sub_dataset(train_index)
 
         # train model
