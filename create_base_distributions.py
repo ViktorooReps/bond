@@ -105,7 +105,7 @@ def main(parser: argparse.ArgumentParser):
         add_distant=args.add_distant
     )
 
-    based_dataset_name = model_name + '_on_' + trained_dataset_name + '.pkl'
+    based_dataset_name = model_name + '_on_' + trained_dataset_name + f'_{args.k_folds}folds.pkl'
 
     based_dataset_file = Path(os.path.join('cache', 'datasets', based_dataset_name))
 
