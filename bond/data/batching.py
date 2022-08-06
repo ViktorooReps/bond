@@ -16,6 +16,7 @@ class BatchedExamples(Example):
     gold_entities_mask: BoolTensor
     token_padding_mask: BoolTensor
     label_mask: BoolTensor
+    label_padding_mask: BoolTensor
 
     def without_labels(self) -> 'BatchedExamples':
         copy_ = copy(self)
@@ -75,6 +76,12 @@ class BatchedExamples(Example):
             padding_value=False
         ).bool()
 
+        label_padding_mask: BoolTensor = pad_sequence(
+            [torch.ones(len(example.label_ids), dtype=torch.bool) for example in examples],
+            batch_first=True,
+            padding_value=False
+        ).bool()
+
         return BatchedExamples(
             token_ids=token_ids,
             labeled_token_mask=labeled_token_mask,
@@ -83,7 +90,8 @@ class BatchedExamples(Example):
             main_sentences_mask=main_sentences_mask,
             gold_entities_mask=gold_entities_mask,
             token_padding_mask=token_padding_mask,
-            label_mask=label_mask
+            label_mask=label_mask,
+            label_padding_mask=label_padding_mask
         )
 
 

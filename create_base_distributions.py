@@ -39,11 +39,11 @@ def eval_base_distributions(args: argparse.Namespace, model: PreTrainedModel, da
                 logits = model(batch)[0]
 
         batch_predicted_distributions = softmax(logits, dim=-1)
-        label_padding_mask = batch.token_padding_mask[batch.labeled_token_mask]
 
         new_batch_examples: List[Example] = []
-        for padded_distributions, padding_mask, example_idx in zip(batch_predicted_distributions, label_padding_mask, batch_idxes):
-            example = dataset[example_idx].with_changes(label_distributions=padded_distributions[padding_mask])
+        for padded_distributions, padding_mask, example_idx in zip(batch_predicted_distributions, batch.label_padding_mask, batch_idxes):
+            unpadded_distributions = padded_distributions[padding_mask]
+            example = dataset[example_idx].with_changes(label_distributions=unpadded_distributions)
             new_batch_examples.append(example)
 
         dataset[batch_idxes] = new_batch_examples
