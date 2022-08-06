@@ -54,15 +54,20 @@ def main(parser: argparse.ArgumentParser):
     args = parser.parse_args()
     tb_writer = setup_logging(args)
 
+    dataset_name = DatasetName(args.dataset)
+    dataset_type = DatasetType(args.dataset_type)
+
     if args.head_learning_rate is None:
         args.head_learning_rate = args.learning_rate
     if args.bert_learning_rate is None:
         args.bert_learning_rate = args.learning_rate
 
-    logging.info('Arguments: ' + str(args))
+    args.base_distributions_file = None
+    if args.base_model is not None:
+        based_dataset_name = get_based_dataset_name(args, dataset_name, args.base_model)
+        args.base_distributions_file = Path(os.path.join('cache', 'datasets', based_dataset_name))
 
-    dataset_name = DatasetName(args.dataset)
-    dataset_type = DatasetType(args.dataset_type)
+    logging.info('Arguments: ' + str(args))
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     args.device = device
