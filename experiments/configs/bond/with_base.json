@@ -4,8 +4,10 @@
     "memory_needed": 7.0,
     "command": "python train.py",
     "args": [
-        ["--base_model=supervised", "--base_model=bond"],
-        "--add_gold_labels=0.05",
+        "--base_model=bond",
+        ["--seed=1", "--seed=2", "--seed=3", "--seed=4", "--seed=5"],
+        ["--add_gold_labels=0.05", "--add_gold_labels=0.10", "--add_gold_labels=0.15", "--add_gold_labels=0.20",
+          "--add_gold_labels=0.30", "--add_gold_labels=0.40", "--add_gold_labels=0.50"],
         "--logging=10000000",
         "--framework=bond",
         "--resfile=res.final.txt",
@@ -33,7 +35,6 @@
         "--label_keep_threshold=0.9",
         "--self_training_epochs=2",
         "--start_updates=2.0",
-        "--end_updates=1.0",
-        "--seed=42"
+        "--end_updates=1.0"
     ]
 }
