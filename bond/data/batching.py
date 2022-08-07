@@ -34,7 +34,8 @@ class BatchedExamples(Example):
             main_sentences_mask: BoolTensor = None,
             gold_entities_mask: BoolTensor = None,
             token_padding_mask: BoolTensor = None,
-            label_mask: BoolTensor = None
+            label_mask: BoolTensor = None,
+            label_padding_mask: BoolTensor = None
     ) -> 'Example':
 
         new_attributes = dict(
@@ -45,7 +46,8 @@ class BatchedExamples(Example):
             main_sentences_mask=main_sentences_mask,
             gold_entities_mask=gold_entities_mask,
             token_padding_mask=token_padding_mask,
-            label_mask=label_mask
+            label_mask=label_mask,
+            label_padding_mask=label_padding_mask
         )
 
         for arg_name, arg_value in new_attributes.items():
