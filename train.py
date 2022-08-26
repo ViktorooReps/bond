@@ -256,7 +256,7 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
 
     corr_results = results
     model_params = {
-        "base_distributions_file": args.base_distributions_file.name,
+        "base_distributions_file": args.base_distributions_file.name if args.base_distributions_file is not None else None,
         "learning_rate": args.learning_rate,
         "batch_size": args.batch_size,
         "bert_dropout": args.bert_dropout,
@@ -320,7 +320,7 @@ def main(parser: argparse.ArgumentParser) -> Scores:
     model = get_model(args, model_class, config_class, num_labels)
 
     train_dataset = prepare_dataset(args, dataset_name, dataset_type, tokenizer)
-    eval_dataset = load_dataset(dataset_name, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+    eval_dataset = load_dataset(dataset_name, DatasetType.VALID, tokenizer, args.model_name, args.max_seq_length)
 
     model = train(args, model, dataset_name, train_dataset, eval_dataset, TrainingFramework(args.framework), tb_writer)
 

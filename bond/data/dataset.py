@@ -12,7 +12,6 @@ from typing import Tuple, Dict, Iterable, Callable, List, Union, Optional
 
 import numpy as np
 import torch
-from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
@@ -84,19 +83,19 @@ class SubTokenDataset(Dataset):
         return partial(collate_fn, pad_token_id=self._token_pad, pad_label_id=self._label_pad)
 
     @property
-    def examples(self) -> NDArray:
+    def examples(self) -> np.ndarray:
         return self._examples
 
-    def sub_dataset(self, indices: Union[List[int], List[bool], NDArray]) -> 'SubTokenDataset':
+    def sub_dataset(self, indices: Union[List[int], List[bool], np.ndarray]) -> 'SubTokenDataset':
         return SubTokenDataset(deepcopy(self._examples[indices]), token_pad=self._token_pad, label_pad=self._label_pad)
 
     def __len__(self) -> int:
         return len(self._examples)
 
-    def __getitem__(self, idx: Union[int, List[int], List[bool], NDArray]) -> Example:
+    def __getitem__(self, idx: Union[int, List[int], List[bool], np.ndarray]) -> Example:
         return self._examples[idx]
 
-    def __setitem__(self, idx: Union[int, List[int], List[bool], NDArray], values: Union[Example, List[Example], NDArray]):
+    def __setitem__(self, idx: Union[int, List[int], List[bool], np.ndarray], values: Union[Example, List[Example], np.ndarray]):
         self._examples[idx] = values
 
 

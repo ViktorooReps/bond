@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import os
 import pickle
@@ -7,16 +6,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import List
 
-import numpy as np
 import torch
-from torch import softmax, Tensor
+from torch import softmax
 from torch.utils.data import SequentialSampler, BatchSampler
 from tqdm import tqdm
 from transformers import PreTrainedModel
 
 from bond.data.batching import BatchedExamples
-from bond.data.dataset import DatasetName, DatasetType, load_tags_dict, load_dataset, SubTokenDataset, get_transformed_dataset_name, \
-    get_based_dataset_name
+from bond.data.dataset import DatasetName, DatasetType, load_tags_dict, load_dataset, SubTokenDataset, get_based_dataset_name
 from bond.data.example import Example
 from bond.trainer import train, TrainingFramework, prepare_dataset
 from bond.utils import set_seed
@@ -84,7 +81,7 @@ def main(parser: argparse.ArgumentParser):
     splitter = KFold(n_splits=args.k_folds)
 
     train_dataset = prepare_dataset(args, dataset_name, dataset_type, tokenizer)
-    eval_dataset = load_dataset(dataset_name, dataset_type, tokenizer, args.model_name, args.max_seq_length)
+    eval_dataset = load_dataset(dataset_name, DatasetType.VALID, tokenizer, args.model_name, args.max_seq_length)
 
     based_dataset = deepcopy(train_dataset)
 
@@ -95,8 +92,9 @@ def main(parser: argparse.ArgumentParser):
         model = get_model(args, model_class, config_class, num_labels)
         model = train(args, model, dataset_name, train_fold, eval_dataset, TrainingFramework(args.framework), tb_writer)
 
-        # get distributions
         eval_fold = train_dataset.sub_dataset(eval_index)
+
+        # get distributions
         eval_base_distributions(args, model, eval_fold)
         based_dataset[eval_index] = eval_fold.examples
 
