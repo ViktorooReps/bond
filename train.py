@@ -130,6 +130,8 @@ def create_parser() -> argparse.ArgumentParser:
     # NER training parameters
     parser.add_argument('--ner_fit_epochs', default=1, type=int,
                         help='Number of epochs for NER fitting stage')
+    parser.add_argument('--use_kldiv_loss_ner', action='store_true',
+                        help='Use KLDivLoss during NER fitting')
     parser.add_argument('--warmup_proportion', default=0.1, type=float,
                         help='Proportion of first NER epoch to use for warmup.')
 
@@ -256,7 +258,6 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
 
     corr_results = results
     model_params = {
-        "base_distributions_file": args.base_distributions_file.name if args.base_distributions_file is not None else None,
         "learning_rate": args.learning_rate,
         "batch_size": args.batch_size,
         "bert_dropout": args.bert_dropout,
@@ -277,9 +278,10 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
             "start_updates": args.start_updates,
             "end_updates": args.end_updates
         }}
+    base_model = args.base_model
 
     with open('results.csv', 'a') as res:
-        res.write(f'{model_name},{train_dataset},{added_gold},{distant},"{model_params}",'
+        res.write(f'{model_name},{train_dataset},{added_gold},{distant},{base_model},"{model_params}",'
                   f'{test_results["f1"]},{test_results["precision"]},{test_results["recall"]},'
                   f'{corr_results["f1"]},{corr_results["precision"]},{corr_results["recall"]},'
                   f'{dev_results["f1"]},{dev_results["precision"]},{dev_results["recall"]}\n')

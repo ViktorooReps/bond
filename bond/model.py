@@ -187,7 +187,7 @@ class BERTHead(nn.Module):
             label_weights = torch.ones_like(raveled_mask, dtype=torch.float)
             label_weights[not_entities] = self.no_entity_weight if not self_training else 1.0
 
-            if self_training and use_kldiv_loss:
+            if use_kldiv_loss:
                 raveled_log_probs = log_probs.contiguous().view(-1, self.num_labels)
                 tok_wise_loss: Tensor = KLDivLoss(reduction='batchmean')(raveled_log_probs[raveled_mask], raveled_gold_labels[raveled_mask])
                 loss = torch.mean(tok_wise_loss * label_weights[raveled_mask])

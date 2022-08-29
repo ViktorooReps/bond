@@ -148,7 +148,7 @@ def train_bond(
         batch: BatchedExamples
         model.train()
         with torch.cuda.amp.autocast():
-            outputs = model(batch, self_training=False, warmup=True)
+            outputs = model(batch, self_training=False, warmup=True, use_kldiv_loss=args.use_kldiv_loss_ner)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
@@ -176,7 +176,7 @@ def train_bond(
             batch: BatchedExamples
             model.train()
             with torch.cuda.amp.autocast():
-                outputs = model(batch, self_training=False)
+                outputs = model(batch, self_training=False, use_kldiv_loss=args.use_kldiv_loss_ner)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
@@ -365,7 +365,7 @@ def train_supervised(
 
         model.train()
         with torch.cuda.amp.autocast():
-            outputs = model(batch, self_training=False, warmup=True)
+            outputs = model(batch, self_training=False, warmup=True, use_kldiv_loss=args.use_kldiv_loss_ner)
         loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
         loss = loss / gradient_accumulation_steps
 
@@ -395,7 +395,7 @@ def train_supervised(
 
             model.train()
             with torch.cuda.amp.autocast():
-                outputs = model(batch, self_training=False)
+                outputs = model(batch, self_training=False, use_kldiv_loss=args.use_kldiv_loss_ner)
             loss, logits = outputs[0], outputs[1]  # model outputs are always tuple in pytorch-transformers
             loss = loss / gradient_accumulation_steps
 
