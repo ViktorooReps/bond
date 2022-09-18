@@ -323,7 +323,7 @@ def train_bond(
 
                 curr_lr = optimizer.param_groups[0]['lr']
                 if args.use_adaptive_scheduler:
-                    curr_result = results['f1']
+                    curr_result = results['f1_dev']
 
                     if curr_result < best_result:
                         patience -= 1
