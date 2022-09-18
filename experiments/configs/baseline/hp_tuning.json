@@ -5,9 +5,8 @@
     "command": "python train.py",
     "args": [
         "--use_adaptive_scheduler",
-        ["--logging=50", "--logging=100", "--logging=150", "--logging=200"],
-        ["--adaptive_scheduler_patience=2", "--adaptive_scheduler_patience=3",
-            "--adaptive_scheduler_patience=4", "--adaptive_scheduler_patience=5"],
+        "--logging=100",
+        "--adaptive_scheduler_patience=5",
         "--framework=supervised",
         "--resfile=res.final.txt",
         "--dataset=conll03",
@@ -19,14 +18,14 @@
         "--batch_size=4",
         "--head_dropout=0.3",
         "--bert_dropout=0.1",
-        "--learning_rate=5e-05",
+        ["--learning_rate=5e-05", "--learning_rate=2e-05", "--learning_rate=1e-05", "--learning_rate=1e-04"],
         "--weight_decay=1e-04",
         "--adam_epsilon=1e-06",
         "--adam_beta1=0.9",
         "--adam_beta2=0.999",
         "--no_entity_weight=0.7",
         "--warmup_proportion=0.2",
-        "--ner_fit_epochs=5",
+        ["--ner_fit_epochs=5", "--ner_fit_epochs=4", "--ner_fit_epochs=3", "--ner_fit_epochs=6", "--ner_fit_epochs=7"],
         "--seed=42"
     ]
 }
