@@ -164,6 +164,10 @@ def train_bond(
 
             amp_scaler.update()
 
+    patience = args.adaptive_scheduler_patience
+    best_result = 0.0
+    best_model = deepcopy(model)
+
     for ner_fit_epoch in range(ner_epochs):
 
         total_batches = len(train_dataloader)
@@ -198,10 +202,29 @@ def train_bond(
                 # Log metrics
                 results = evaluate(args, model, eval_dataset, dataset_name)
                 results = {k + '_dev': v for k, v in results.items()}
-                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log}, 'ner')
+
+                curr_lr = optimizer.param_groups[0]['lr']
+                if args.use_adaptive_scheduler:
+                    curr_result = results['f1']
+
+                    if curr_result < best_result:
+                        patience -= 1
+                    else:
+                        patience = args.adaptive_scheduler_patience
+                        best_result = curr_result
+                        best_model = deepcopy(model)
+
+                    if patience < 0:  # update learning rate and model
+                        for group in optimizer.param_groups:
+                            group['lr'] = curr_lr * args.adaptive_scheduler_drop
+                        model.load_state_dict(best_model.state_dict())
+
+                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'ner')
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
+
+    model.load_state_dict(best_model.state_dict())  # load best model from ner tuning stage
 
     self_training_teacher_model = deepcopy(model)
     self_training_teacher_model.eval()
@@ -267,6 +290,7 @@ def train_bond(
             label_mask = batch.label_mask.to(device)
             label_ids = batch.label_ids.to(device)
 
+            # correct distributions for known ground truth
             teacher_label_distributions[gold_label_mask] = convert_hard_to_soft_labels(label_ids[gold_label_mask], num_labels)
 
             new_label_mask = (label_mask & teacher_mask) | gold_label_mask
@@ -296,14 +320,31 @@ def train_bond(
                 # Log metrics
                 results = evaluate(args, model, eval_dataset, dataset_name)
                 results = {k + '_dev': v for k, v in results.items()}
-                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log}, 'self_training')
+
+                curr_lr = optimizer.param_groups[0]['lr']
+                if args.use_adaptive_scheduler:
+                    curr_result = results['f1']
+
+                    if curr_result < best_result:
+                        patience -= 1
+                    else:
+                        patience = args.adaptive_scheduler_patience
+                        best_result = curr_result
+                        best_model = deepcopy(model)
+
+                    if patience < 0:  # update learning rate and model
+                        for group in optimizer.param_groups:
+                            group['lr'] = curr_lr * args.adaptive_scheduler_drop
+                        model.load_state_dict(best_model.state_dict())
+
+                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'self_training')
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
 
     tb_writer.close()
 
-    return model
+    return best_model
 
 
 def train_supervised(
@@ -381,6 +422,10 @@ def train_supervised(
 
             amp_scaler.update()
 
+    patience = args.adaptive_scheduler_patience
+    best_result = 0.0
+    best_model = deepcopy(model)
+
     for ner_fit_epoch in range(ner_epochs):
 
         total_batches = len(train_dataloader)
@@ -417,12 +462,29 @@ def train_supervised(
                 # Log metrics
                 results = evaluate(args, model, eval_dataset, dataset_name)
                 results = {k + '_dev': v for k, v in results.items()}
-                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log}, 'ner')
+
+                curr_lr = optimizer.param_groups[0]['lr']
+                if args.use_adaptive_scheduler:
+                    curr_result = results['f1']
+
+                    if curr_result < best_result:
+                        patience -= 1
+                    else:
+                        patience = args.adaptive_scheduler_patience
+                        best_result = curr_result
+                        best_model = deepcopy(model)
+
+                    if patience < 0:  # update learning rate and model
+                        for group in optimizer.param_groups:
+                            group['lr'] = curr_lr * args.adaptive_scheduler_drop
+                        model.load_state_dict(best_model.state_dict())
+
+                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'ner')
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
 
-    return model
+    return best_model
 
 
 def train(

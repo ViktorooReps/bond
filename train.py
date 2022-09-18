@@ -79,6 +79,12 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of batches in each step.')
     parser.add_argument('--use_linear_scheduler', action='store_true',
                         help='Use linear scheduler from transformers')
+    parser.add_argument('--use_adaptive_scheduler', action='store_true',
+                        help='Use adaptive scheduling strategy based on dev metrics')
+    parser.add_argument('--adaptive_scheduler_patience', type=int, default=5,
+                        help='Patience for learning rate drop')
+    parser.add_argument('--adaptive_scheduler_drop', type=float, default=0.5,
+                        help='Strength of lr drop once patience is depleted')
     parser.add_argument("--bert_learning_rate", type=float,
                         help="The initial learning rate for RoBERTa. Defaults to --learning_rate.")
     parser.add_argument('--freeze_bert', action='store_true',
@@ -189,7 +195,10 @@ def get_model(args: argparse.Namespace, model_class: Type[PreTrainedModel], conf
 
 def setup_logging(args: argparse.Namespace) -> SummaryWriter:
     run_name = os.environ['TASK_NAME']
-    experiment_name = ('distant' if args.add_distant else 'no_distant') + f'gold{args.add_gold_labels:.2f}'
+    model_name = args.framework
+    if args.use_coregulation:
+        model_name += '_coregularized'
+    experiment_name = '_'.join([model_name, ('distant' if args.add_distant else 'no_distant'), f'gold{args.add_gold_labels:.2f}'])
 
     warnings.simplefilter("ignore", UserWarning)
 
