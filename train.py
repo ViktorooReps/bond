@@ -273,7 +273,10 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
         "bert_dropout": args.bert_dropout,
         "head_dropout": args.head_dropout,
         "ner_fit_epochs": args.ner_fit_epochs,
-        "warmup_proportion": args.warmup_proportion
+        "warmup_proportion": args.warmup_proportion,
+        "logging": args.logging,
+        "adaptive_scheduler_patience": args.adaptive_scheduler_patience,
+        "adaptive_scheduler_drop": args.adaptive_scheduler_drop
     }
     if args.use_coregulation:
         model_params = {**model_params, **{
