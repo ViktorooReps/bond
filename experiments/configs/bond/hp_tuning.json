@@ -31,9 +31,9 @@
         "--correct_frequency",
         "--use_kldiv_loss",
         "--label_keep_threshold=0.9",
-        ["--self_training_epochs=15", "--self_training_epochs=25", "--self_training_epochs=50"],
-        ["--start_updates=3.0", "--start_updates=2.0", "--start_updates=1.0"],
-        ["--end_updates=2.0", "--end_updates=1.0", "--end_updates=0.5"],
+        "--self_training_epochs=15",
+        "--start_updates=2.0",
+        "--end_updates=1.0",
         "--seed=42"
     ]
 }

@@ -5,7 +5,9 @@
     "command": "python create_base_distributions.py",
     "args": [
         "--k_folds=2",
-        "--logging=10000000",
+        "--use_adaptive_scheduler",
+        "--logging=100",
+        "--adaptive_scheduler_patience=5",
         "--framework=supervised",
         "--resfile=res.final.txt",
         "--dataset=conll03",
@@ -26,8 +28,7 @@
         "--adam_beta2=0.999",
         "--no_entity_weight=0.7",
         "--warmup_proportion=0.2",
-        "--ner_fit_epochs=5",
-        "--use_linear_scheduler",
+        "--ner_fit_epochs=10",
         "--seed=42"
     ]
 }
