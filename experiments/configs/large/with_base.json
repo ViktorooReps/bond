@@ -1,7 +1,7 @@
 {
     "output": "logs/based.log",
     "config_name": "based",
-    "memory_needed": 7.0,
+    "memory_needed": 20.0,
     "command": "python train.py",
     "args": [
         "--k_folds=4",
