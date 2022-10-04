@@ -1,7 +1,7 @@
 {
     "output": "logs/base_dist.log",
     "config_name": "base-dist",
-    "memory_needed": 12.0,
+    "memory_needed": 20.0,
     "command": "python create_base_distributions.py",
     "args": [
         "--k_folds=4",
