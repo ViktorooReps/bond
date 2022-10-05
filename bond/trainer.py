@@ -221,7 +221,7 @@ def train_bond(
                     if patience < 0:  # update learning rate and model
                         curr_lr = curr_lr * args.adaptive_scheduler_drop
                         for group in optimizer.param_groups:
-                            group['lr'] = curr_lr
+                            group['lr'] = group['lr'] * args.adaptive_scheduler_drop
                         model.load_state_dict(best_model.state_dict())
                         patience = args.adaptive_scheduler_patience
 
@@ -342,7 +342,7 @@ def train_bond(
                     if patience < 0:  # update learning rate and model
                         curr_lr = curr_lr * args.adaptive_scheduler_drop
                         for group in optimizer.param_groups:
-                            group['lr'] = curr_lr
+                            group['lr'] = group['lr'] * args.adaptive_scheduler_drop
                         model.load_state_dict(best_model.state_dict())
                         patience = args.adaptive_scheduler_patience
 
@@ -489,7 +489,7 @@ def train_supervised(
                     if patience < 0:  # update learning rate and model
                         curr_lr = curr_lr * args.adaptive_scheduler_drop
                         for group in optimizer.param_groups:
-                            group['lr'] = curr_lr
+                            group['lr'] = group['lr'] * args.adaptive_scheduler_drop
                         model.load_state_dict(best_model.state_dict())
                         patience = args.adaptive_scheduler_patience
 
