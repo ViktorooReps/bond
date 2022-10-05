@@ -219,9 +219,11 @@ def train_bond(
                         best_model = deepcopy(model)
 
                     if patience < 0:  # update learning rate and model
+                        curr_lr = curr_lr * args.adaptive_scheduler_drop
                         for group in optimizer.param_groups:
-                            group['lr'] = curr_lr * args.adaptive_scheduler_drop
+                            group['lr'] = curr_lr
                         model.load_state_dict(best_model.state_dict())
+                        patience = args.adaptive_scheduler_patience
 
                 log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'ner')
                 logging_loss = tr_loss
@@ -229,6 +231,7 @@ def train_bond(
                 steps_from_last_log = 0
 
     model.load_state_dict(best_model.state_dict())  # load best model from ner tuning stage
+    patience = args.adaptive_scheduler_patience
 
     self_training_teacher_model = deepcopy(model)
     self_training_teacher_model.eval()
@@ -337,9 +340,11 @@ def train_bond(
                         best_model = deepcopy(model)
 
                     if patience < 0:  # update learning rate and model
+                        curr_lr = curr_lr * args.adaptive_scheduler_drop
                         for group in optimizer.param_groups:
-                            group['lr'] = curr_lr * args.adaptive_scheduler_drop
+                            group['lr'] = curr_lr
                         model.load_state_dict(best_model.state_dict())
+                        patience = args.adaptive_scheduler_patience
 
                 log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'self_training')
                 logging_loss = tr_loss
@@ -482,9 +487,11 @@ def train_supervised(
                         best_model = deepcopy(model)
 
                     if patience < 0:  # update learning rate and model
+                        curr_lr = curr_lr * args.adaptive_scheduler_drop
                         for group in optimizer.param_groups:
-                            group['lr'] = curr_lr * args.adaptive_scheduler_drop
+                            group['lr'] = curr_lr
                         model.load_state_dict(best_model.state_dict())
+                        patience = args.adaptive_scheduler_patience
 
                 log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'ner')
                 logging_loss = tr_loss
