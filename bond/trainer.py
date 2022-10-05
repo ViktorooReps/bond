@@ -390,6 +390,9 @@ def train_supervised(
     def log_metrics(res: Scores, prefix: str) -> None:
         examples_seen = global_batch * args.batch_size
 
+        print('Logging metrics:')
+        pprint(res)
+
         for metric_name, metric_value in res.items():
             tb_writer.add_scalar(f"{metric_name}_{prefix}", metric_value, examples_seen)
             tb_writer.add_scalar(f"{metric_name}", metric_value, examples_seen)
