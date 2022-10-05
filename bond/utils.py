@@ -165,6 +165,19 @@ def ner_scores(gold_labels: Iterable[int], predicted_labels: Iterable[int], tags
     return {'f1': f1, 'precision': precision, 'recall': recall}
 
 
+class WarmupScheduler(object):
+
+    def __init__(self, optimizer: Optimizer, warmup_steps: int):
+        self._warmup_scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps)
+        self._steps = 0
+        self._warmup_steps = warmup_steps
+
+    def step(self):
+        self._steps += 1
+        if self._steps <= self._warmup_steps:
+            self._warmup_scheduler.step()  # stop updating schedule after warmup
+
+
 def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
                        warmup_steps: int, end_lr_proportion: float = 0) -> Tuple[PreTrainedModel, Optimizer, BaseScheduler]:
     """Only compatible with RoBERTa-base for now"""
@@ -232,7 +245,7 @@ def initialize_roberta(args, model: PreTrainedModel, total_steps: int,
     if args.use_linear_scheduler:
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
     else:
-        scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps)
+        scheduler = WarmupScheduler(optimizer, warmup_steps)
 
     model.zero_grad()
     return model, optimizer, scheduler
