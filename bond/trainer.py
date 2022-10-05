@@ -3,6 +3,7 @@ from argparse import Namespace
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
+from pprint import pprint
 from typing import List
 
 import torch
@@ -128,6 +129,9 @@ def train_bond(
 
     def log_metrics(res: Scores, prefix: str) -> None:
         examples_seen = global_batch * args.batch_size
+
+        print('Logging metrics:')
+        pprint(res)
 
         for metric_name, metric_value in res.items():
             tb_writer.add_scalar(f"{metric_name}_{prefix}", metric_value, examples_seen)
