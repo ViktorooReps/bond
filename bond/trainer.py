@@ -225,7 +225,7 @@ def train_bond(
                         model.load_state_dict(best_model.state_dict())
                         patience = args.adaptive_scheduler_patience
 
-                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'ner')
+                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr, 'patience': patience}, 'ner')
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
@@ -346,7 +346,7 @@ def train_bond(
                         model.load_state_dict(best_model.state_dict())
                         patience = args.adaptive_scheduler_patience
 
-                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'self_training')
+                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr, 'patience': patience}, 'self_training')
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
@@ -493,7 +493,7 @@ def train_supervised(
                         model.load_state_dict(best_model.state_dict())
                         patience = args.adaptive_scheduler_patience
 
-                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr}, 'ner')
+                log_metrics({**results, 'loss': (tr_loss - logging_loss) / steps_from_last_log, 'lr': curr_lr, 'patience': patience}, 'ner')
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
