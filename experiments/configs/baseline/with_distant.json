@@ -1,7 +1,7 @@
 {
     "output": "logs/distant/baseline.log",
     "config_name": "baseline-distant",
-    "memory_needed": 5.0,
+    "memory_needed": 10.0,
     "command": "python train.py",
     "args": [
         ["--seed=1", "--seed=2", "--seed=3", "--seed=4", "--seed=5"],
@@ -9,7 +9,7 @@
           "--add_gold_labels=0.30", "--add_gold_labels=0.40", "--add_gold_labels=0.50"],
         "--use_adaptive_scheduler",
         "--logging=100",
-        "--adaptive_scheduler_patience=5",
+        "--adaptive_scheduler_patience=7",
         "--add_distant",
         "--framework=supervised",
         "--resfile=res.final.txt",
@@ -19,7 +19,7 @@
         "--model_name=roberta-base",
         "--gradient_accumulation_steps=1",
         "--max_seq_len=512",
-        "--batch_size=4",
+        "--batch_size=8",
         "--head_dropout=0.3",
         "--bert_dropout=0.1",
         "--learning_rate=5e-05",
@@ -29,6 +29,6 @@
         "--adam_beta2=0.999",
         "--no_entity_weight=0.7",
         "--warmup_proportion=0.2",
-        "--ner_fit_epochs=10"
+        "--ner_fit_epochs=15"
     ]
 }

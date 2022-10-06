@@ -1,7 +1,7 @@
 {
     "output": "logs/hp_tune.log",
     "config_name": "hp-tuning",
-    "memory_needed": 7.0,
+    "memory_needed": 10.0,
     "command": "python train.py",
     "args": [
         "--use_adaptive_scheduler",
