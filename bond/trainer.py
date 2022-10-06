@@ -172,6 +172,7 @@ def train_bond(
     best_result = 0.0
     best_model = deepcopy(model)
 
+    curr_lr = optimizer.param_groups[0]['lr']
     for ner_fit_epoch in range(ner_epochs):
 
         total_batches = len(train_dataloader)
@@ -230,6 +231,10 @@ def train_bond(
                 examples_from_last_log = 0
                 steps_from_last_log = 0
 
+        if curr_lr < 1e-7:
+            print(f'Early stopping at epoch {ner_fit_epoch}!')
+            break
+
     model.load_state_dict(best_model.state_dict())  # load best model from ner tuning stage
     patience = args.adaptive_scheduler_patience
 
@@ -253,6 +258,7 @@ def train_bond(
     model, optimizer, scheduler = initialize_roberta(args, model, total_steps, warmup_steps=0, end_lr_proportion=0)
     model.prepare_for_self_training()
 
+    curr_lr = optimizer.param_groups[0]['lr']
     # Self training
     for self_training_epoch in range(st_epochs):
 
@@ -351,6 +357,10 @@ def train_bond(
                 examples_from_last_log = 0
                 steps_from_last_log = 0
 
+        if curr_lr < 1e-7:
+            print(f'Early stopping at epoch {self_training_epoch}!')
+            break
+
     tb_writer.close()
 
     return best_model
@@ -438,6 +448,7 @@ def train_supervised(
     best_result = 0.0
     best_model = deepcopy(model)
 
+    curr_lr = optimizer.param_groups[0]['lr']
     for ner_fit_epoch in range(ner_epochs):
 
         total_batches = len(train_dataloader)
@@ -497,6 +508,10 @@ def train_supervised(
                 logging_loss = tr_loss
                 examples_from_last_log = 0
                 steps_from_last_log = 0
+
+        if curr_lr < 1e-7:
+            print(f'Early stopping at epoch {ner_fit_epoch}!')
+            break
 
     return best_model
 
