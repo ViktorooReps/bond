@@ -27,15 +27,13 @@
         "--no_entity_weight=0.7",
         "--warmup_proportion=0.2",
         "--ner_fit_epochs=15",
-        ["--self_training_lr_proportion=0.7", "--self_training_lr_proportion=0.5",
-            "--self_training_lr_proportion=0.3", "--self_training_lr_proportion=0.2"],
+        "--self_training_lr_proportion=0.5",
         "--correct_frequency",
         "--use_kldiv_loss",
         "--label_keep_threshold=0.9",
-        ["--self_training_epochs=5", "--self_training_epochs=10",
-            "--self_training_epochs=15", "--self_training_epochs=20", "--self_training_epochs=25"],
-        ["--start_updates=3.0", "--start_updates=2.0", "--start_updates=1.0"],
-        ["--end_updates=1.0", "--end_updates=0.5", "--end_updates=0.0"],
+        "--self_training_epochs=10",
+        "--start_updates=2.0",
+        "--end_updates=0.0",
         "--seed=42"
     ]
 }
