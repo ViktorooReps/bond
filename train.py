@@ -134,7 +134,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Number of models to use for NLL')
 
     # NER training parameters
-    parser.add_argument('--ner_fit_epochs', default=1, type=int,
+    parser.add_argument('--ner_fit_epochs', default=1000, type=int,
                         help='Number of epochs for NER fitting stage')
     parser.add_argument('--use_kldiv_loss_ner', action='store_true',
                         help='Use KLDivLoss during NER fitting')
@@ -142,7 +142,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Proportion of first NER epoch to use for warmup.')
 
     # Self-training parameters
-    parser.add_argument('--self_training_epochs', type=int, default=50,
+    parser.add_argument('--self_training_epochs', type=int, default=1000,
                         help='number of epochs for self training stage')
     parser.add_argument('--label_keep_threshold', type=float, default=0.9,
                         help='Label keeping threshold for self training stage')

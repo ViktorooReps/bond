@@ -172,7 +172,11 @@ def train_bond(
     best_result = 0.0
     best_model = deepcopy(model)
 
-    curr_lr = optimizer.param_groups[0]['lr']
+    curr_lr = args.learning_rate * args.self_training_lr_proportion
+    max_lr = optimizer.param_groups[0]['lr']
+    for group in optimizer.param_groups:
+        group['lr'] = (group['lr'] / max_lr) * curr_lr  # to keep lr layer decay
+
     for ner_fit_epoch in range(ner_epochs):
 
         total_batches = len(train_dataloader)
