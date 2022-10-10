@@ -270,6 +270,7 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
         "model_name": args.model_name,
         "use_kldiv_loss_ner": args.use_kldiv_loss_ner,
         "learning_rate": args.learning_rate,
+        "lr_decrease": args.lr_decrease,
         "batch_size": args.batch_size,
         "bert_dropout": args.bert_dropout,
         "head_dropout": args.head_dropout,
