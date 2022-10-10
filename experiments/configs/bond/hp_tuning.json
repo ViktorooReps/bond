@@ -19,21 +19,32 @@
         "--batch_size=8",
         "--head_dropout=0.3",
         "--bert_dropout=0.1",
-        "--learning_rate=5e-05",
-        "--weight_decay=1e-04",
+        "--learning_rate=6e-05",
+        "--lr_decrease=0.9",
+        "--weight_decay=0.0",
         "--adam_epsilon=1e-06",
         "--adam_beta1=0.9",
         "--adam_beta2=0.999",
         "--no_entity_weight=0.7",
         "--warmup_proportion=0.2",
-        "--ner_fit_epochs=15",
         "--self_training_lr_proportion=0.5",
         "--correct_frequency",
         "--use_kldiv_loss",
         "--label_keep_threshold=0.9",
-        "--self_training_epochs=10",
-        "--start_updates=2.0",
-        "--end_updates=0.0",
+        ["--self_training_epochs=5",
+            "--self_training_epochs=10",
+            "--self_training_epochs=20",
+            "--self_training_epochs=30",
+            "--self_training_epochs=40"
+        ],
+        ["--start_updates=2.0",
+            "--start_updates=1.0",
+            "--start_updates=3.0"
+        ],
+        ["--end_updates=0.0",
+            "--end_updates=1.0",
+            "--end_updates=0.5"
+        ],
         "--seed=42"
     ]
 }
