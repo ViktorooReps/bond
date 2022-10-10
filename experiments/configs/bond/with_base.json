@@ -5,7 +5,6 @@
     "command": "python train.py",
     "args": [
         ["--base_model=supervised", "--base_model=bond"],
-        ["", "--use_kldiv_loss_ner"],
         ["--seed=1", "--seed=2", "--seed=3", "--seed=4", "--seed=5"],
         ["--add_gold_labels=0.05", "--add_gold_labels=0.10", "--add_gold_labels=0.15", "--add_gold_labels=0.20",
           "--add_gold_labels=0.30", "--add_gold_labels=0.40", "--add_gold_labels=0.50"],
