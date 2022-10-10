@@ -4,7 +4,7 @@
     "memory_needed": 7.0,
     "command": "python create_base_distributions.py",
     "args": [
-        "--k_folds=2",
+        "--k_folds=5",
         "--use_adaptive_scheduler",
         "--logging=100",
         "--adaptive_scheduler_patience=7",

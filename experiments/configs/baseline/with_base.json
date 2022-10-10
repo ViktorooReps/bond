@@ -4,6 +4,7 @@
     "memory_needed": 10.0,
     "command": "python train.py",
     "args": [
+        "--k_folds=5",
         ["--base_model=supervised", "--base_model=bond"],
         ["--seed=1", "--seed=2", "--seed=3", "--seed=4", "--seed=5"],
         ["--add_gold_labels=0.05", "--add_gold_labels=0.10", "--add_gold_labels=0.15", "--add_gold_labels=0.20",
