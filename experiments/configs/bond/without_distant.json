@@ -34,8 +34,8 @@
         "--correct_frequency",
         "--use_kldiv_loss",
         "--label_keep_threshold=0.9",
-        "--self_training_epochs=15",
-        "--start_updates=2.0",
-        "--end_updates=1.0"
+        "--self_training_epochs=20",
+        "--start_updates=1.0",
+        "--end_updates=0.5"
     ]
 }
