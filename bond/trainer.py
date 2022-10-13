@@ -308,7 +308,8 @@ def train_bond(
             label_ids = batch.label_ids.to(device)
 
             # correct distributions for known ground truth
-            teacher_label_distributions[gold_label_mask] = convert_hard_to_soft_labels(label_ids[gold_label_mask], num_labels)
+            if not args.remove_guidance:
+                teacher_label_distributions[gold_label_mask] = convert_hard_to_soft_labels(label_ids[gold_label_mask], num_labels)
 
             new_label_mask = (label_mask & teacher_mask) | gold_label_mask
             teacher_batch = batch.with_changes(label_distributions=teacher_label_distributions.cpu(), label_mask=new_label_mask.cpu())

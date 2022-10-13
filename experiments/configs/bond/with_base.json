@@ -1,7 +1,7 @@
 {
     "output": "logs/based.log",
     "config_name": "based",
-    "memory_needed": 7.0,
+    "memory_needed": 12.0,
     "command": "python train.py",
     "args": [
         "--k_folds=5",
@@ -31,7 +31,6 @@
         "--adam_beta2=0.999",
         "--no_entity_weight=0.7",
         "--warmup_proportion=0.2",
-        "--ner_fit_epochs=15",
         "--self_training_lr_proportion=0.5",
         "--correct_frequency",
         "--use_kldiv_loss",

@@ -148,6 +148,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help='Label keeping threshold for self training stage')
     parser.add_argument('--self_training_lr_proportion', type=float, default=0.2,
                         help='Proportion of initial learning rate to use for self training stage')
+    parser.add_argument('--remove_guidance', action='store_true',
+                        help='Do not guide teacher labels with partial annotations.')
     parser.add_argument('--correct_frequency', action='store_true',
                         help='Do soft label frequency correction before choosing labels with threshold')
     parser.add_argument('--use_kldiv_loss', action='store_true',
@@ -287,6 +289,7 @@ def run_evaluation(args: argparse.Namespace, model: PreTrainedModel, dataset_nam
         }}
     if args.framework == 'bond':
         model_params = {**model_params, **{
+            "guided": not args.remove_guidance,
             "self_training_epochs": args.self_training_epochs,
             "label_keep_threshold": args.label_keep_threshold,
             "self_training_lr_proportion": args.self_training_lr_proportion,
